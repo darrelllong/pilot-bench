@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.14)
 project (pilot)
 
 ###############################################################################
@@ -11,6 +11,7 @@ set (PILOT_VERSION_MINOR 14)
 ## OPTIONS
 option (WITH_LUA    "Build with Lua support" OFF)
 option (WITH_PYTHON "Build Python binding"   OFF)
+option (WITH_TUI    "Build with ncurses/CDK text UI" OFF)
 option (ENABLE_ASAN_DEBUG "Enable AddressSanitizer and UBSan for Debug Build" ON)
 option (ENABLE_TSAN_DEBUG "Enable ThreadSanitizer for Debug Build, can't be used with ENABLE_ASAN_DEBUG" OFF)
 
@@ -38,7 +39,7 @@ endif (NOT CMAKE_BUILD_TYPE)
 
 # Apply visibility settings to all targets including .a files. This sets
 # policy CMP0063 to NEW.
-cmake_policy (VERSION 3.5.2)
+cmake_policy (VERSION 3.14)
 # Don't expose useless symbols. This is also needed if Boost is compiled with
 # -fvisibility=hidden.
 set (CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -92,6 +93,8 @@ ExternalProject_Add (gtest
   URL https://github.com/google/googletest/archive/release-1.8.0.zip
   URL_HASH SHA256=f3ed3b58511efd272eb074a3a6d6fb79d7c2e6a0e374323d1e6bcbcc1ef141bf
   PREFIX ${CMAKE_CURRENT_BINARY_DIR}/gtest
+  CMAKE_ARGS -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   INSTALL_COMMAND ""
 )
 ExternalProject_Get_Property(gtest SOURCE_DIR BINARY_DIR)
@@ -100,30 +103,39 @@ set (GTEST_BINARY_DIR ${BINARY_DIR}/googlemock/gtest)
 
 
 ###############################################################################
-## TUI LIBRARIES
+## TUI LIBRARIES (optional — CDK+ncurses for the curses-based UI)
 
-# We want to link to ncurses statically on Mac and Windows
-if (WIN32)
-   set (CMAKE_FIND_LIBRARY_SUFFIXES .lib .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-elseif (APPLE)
-   set (CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-endif (WIN32)
+if (WITH_TUI)
+  # We want to link to ncurses statically on Mac and Windows
+  if (WIN32)
+     set (CMAKE_FIND_LIBRARY_SUFFIXES .lib .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+  elseif (APPLE)
+     set (CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
+  endif (WIN32)
 
-find_package (Curses REQUIRED)
-ExternalProject_Add (cdk
-  URL http://invisible-mirror.net/archives/cdk/cdk-5.0-20150928.tgz
-  URL_HASH SHA256=028da75d5f777a1c4184f88e34918bd273bd83bbe3c959bc11710c4f0ea2e448
-  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/cdk
-  SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/cdk/src/cdk
-  CONFIGURE_COMMAND "${CMAKE_SOURCE_DIR}/cmake/configure_fpic.sh" "${CMAKE_CURRENT_BINARY_DIR}/cdk/src/cdk/configure"
-  BUILD_COMMAND "make"
-  INSTALL_COMMAND ""
-)
-ExternalProject_Get_Property(cdk SOURCE_DIR BINARY_DIR)
-# BINARY_DIR/include has CDK's cdk_config.h
-set (CDK_INCLUDE_DIR "${SOURCE_DIR}/include" "${BINARY_DIR}/include")
-set (CDK_STATIC_LIBRARIES "${BINARY_DIR}/libcdk.a")
-set (CDK_LIBRARIES ${CURSES_LIBRARIES})
+  find_package (Curses REQUIRED)
+  ExternalProject_Add (cdk
+    URL http://invisible-mirror.net/archives/cdk/cdk-5.0-20150928.tgz
+    URL_HASH SHA256=028da75d5f777a1c4184f88e34918bd273bd83bbe3c959bc11710c4f0ea2e448
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/cdk
+    SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/cdk/src/cdk
+    CONFIGURE_COMMAND "${CMAKE_SOURCE_DIR}/cmake/configure_fpic.sh" "${CMAKE_CURRENT_BINARY_DIR}/cdk/src/cdk/configure" ${CURSES_INCLUDE_DIRS}
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    BUILD_COMMAND "make"
+    INSTALL_COMMAND ""
+  )
+  ExternalProject_Get_Property(cdk SOURCE_DIR BINARY_DIR)
+  # BINARY_DIR/include has CDK's cdk_config.h
+  set (CDK_INCLUDE_DIR "${SOURCE_DIR}/include" "${BINARY_DIR}/include")
+  set (CDK_STATIC_LIBRARIES "${BINARY_DIR}/libcdk.a")
+  set (CDK_LIBRARIES ${CURSES_LIBRARIES})
+  add_definitions ("-DPILOT_WITH_TUI")
+else ()
+  # No TUI: stub out all CDK variables so sub-CMakeLists don't need ifdefs.
+  set (CDK_INCLUDE_DIR "")
+  set (CDK_STATIC_LIBRARIES "")
+  set (CDK_LIBRARIES "")
+endif (WITH_TUI)
 
 
 ###############################################################################
@@ -136,7 +148,7 @@ if (BOOST_USE_STATIC)
 endif ()
 
 set (Boost_USE_MULTITHREADED      ON)
-set (BOOST_COMPONENTS_NEEDED filesystem log program_options system timer chrono)
+set (BOOST_COMPONENTS_NEEDED filesystem log program_options timer chrono)
 if (WITH_PYTHON)
   if (NOT BOOST_PYTHON_MODULE)
     set (BOOST_PYTHON_MODULE python)

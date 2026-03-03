@@ -385,14 +385,10 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
 
     size_t subsession_sum_wa = 0;
     nanosecond_type subsession_sum_dur = 0;
-    size_t total_sum_wa = 0;
-    nanosecond_type total_sum_dur = 0;
     // convert input into subsession data by grouping every q samples
     for (size_t i = 0; i < rounds; ++i) {
         subsession_sum_wa  += round_work_amounts[i];
         subsession_sum_dur += round_durations[i];
-        total_sum_wa += round_work_amounts[i];
-        total_sum_dur += round_durations[i];
         if (i % size_t(q) == size_t(q) - 1) {
             subsession_work_amounts.push_back(subsession_sum_wa);
             subsession_round_durations.push_back(subsession_sum_dur);

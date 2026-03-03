@@ -46,7 +46,7 @@ add_executable (bench pilot.cc run_program.cc detect_changepoint_edm.cc analyze.
 if (WITH_LUA)
   add_dependencies (bench cdk luaprompt)
 endif (WITH_LUA)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++14")
 
 # We link to pilot_staticlib for better portability
 target_link_libraries (bench pilot_staticlib ${CDK_STATIC_LIBRARIES}

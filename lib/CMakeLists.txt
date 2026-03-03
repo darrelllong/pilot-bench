@@ -12,7 +12,7 @@ ExternalProject_Add (twitter_breakoutdetection
   GIT_TAG 7ae3fc4
 
   PREFIX ${CMAKE_CURRENT_BINARY_DIR}/twitter_breakoutdetection
-  PATCH_COMMAND patch -p1 < ${CMAKE_CURRENT_LIST_DIR}/twitter_breakoutdetection_pilot.patch
+  PATCH_COMMAND bash "${CMAKE_SOURCE_DIR}/cmake/patch_twitter_bd.sh" "${CMAKE_CURRENT_LIST_DIR}/twitter_breakoutdetection_pilot.patch"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
@@ -68,12 +68,20 @@ if (WITH_PYTHON)
                     $<TARGET_FILE_NAME:pilot_sharedlib> $<TARGET_FILE_DIR:pilot_sharedlib>/pilot_bench.so)
 endif (WITH_PYTHON)
 
-add_dependencies (pilot_sharedlib cdk twitter_breakoutdetection)
+if (WITH_TUI)
+  add_dependencies (pilot_sharedlib cdk twitter_breakoutdetection)
+else ()
+  add_dependencies (pilot_sharedlib twitter_breakoutdetection)
+endif (WITH_TUI)
 
 # static library
 add_library (pilot_staticlib STATIC ${PILOT_LIBSRC})
 set_target_properties(pilot_staticlib PROPERTIES OUTPUT_NAME pilot)
-add_dependencies (pilot_staticlib cdk twitter_breakoutdetection)
+if (WITH_TUI)
+  add_dependencies (pilot_staticlib cdk twitter_breakoutdetection)
+else ()
+  add_dependencies (pilot_staticlib twitter_breakoutdetection)
+endif (WITH_TUI)
 
 # installation
 install (TARGETS pilot_sharedlib pilot_staticlib
@@ -91,7 +99,7 @@ if (WITH_PYTHON)
 endif(WITH_PYTHON)
 
 # needed by boost 1.59+
-add_definitions ("-std=gnu++11")
+add_definitions ("-std=gnu++14")
 # we should use target_compile_features() when everyone upgrades to cmake 3.1+
 
 # tests

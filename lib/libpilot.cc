@@ -51,6 +51,7 @@
 #include <boost/format.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/support/date_time.hpp>
 #include <boost/log/sinks/basic_sink_backend.hpp>
 #include <boost/log/sinks/frontend_requirements.hpp>
 #include <boost/log/sources/severity_logger.hpp>
@@ -61,6 +62,7 @@
 #include <boost/shared_ptr.hpp>
 #include <algorithm>
 #include <cstdlib>
+#include <sys/stat.h>
 #include "common.h"
 #include "config.h"
 #include <cstdio>
@@ -68,7 +70,9 @@
 #include <fstream>
 #include "pilot/libpilot.h"
 #include "libpilotcpp.h"
+#ifdef PILOT_WITH_TUI
 #include "pilot/pilot_tui.hpp"
+#endif
 #include "pilot/pilot_workload_runner.hpp"
 #include <vector>
 #include "workload.hpp"
@@ -397,11 +401,14 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
         //! TODO: save the data to a database
 
         // refresh UI
-        if (wl->tui_) {
+        {
             unique_ptr<pilot_analytical_result_t> wi(wl->get_analytical_result());
-            *(wl->tui_) << *wi;
-        } else {
-            unique_ptr<pilot_analytical_result_t> wi(wl->get_analytical_result());
+#ifdef PILOT_WITH_TUI
+            if (wl->tui_) {
+                *(wl->tui_) << *wi;
+            } else
+#endif
+            {
             stringstream ss;
             ss << setw(3) << left << wl->rounds_ - 1 << " | ";
             if (!wl->num_of_pi_) {
@@ -445,7 +452,8 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
                     ss << "no data";
                 }
             }
-            info_log << ss.str();
+                info_log << ss.str();
+            }
         }
 
         // handle hooks
@@ -471,6 +479,7 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
 }
 
 int pilot_run_workload_tui(pilot_workload_t *wl) noexcept {
+#ifdef PILOT_WITH_TUI
     unique_ptr<PilotTUI> pilot_tui;
     try {
         pilot_tui.reset(new PilotTUI(&(wl->pi_info_), wl->format_wps_));
@@ -487,6 +496,9 @@ int pilot_run_workload_tui(pilot_workload_t *wl) noexcept {
     workload_runner.join();
     wl->tui_ = NULL;
     return workload_runner.get_workload_result();
+#else
+    return pilot_run_workload(wl);
+#endif
 }
 
 void pilot_stop_workload(pilot_workload_t *wl) noexcept {
@@ -507,8 +519,10 @@ static void _pilot_ui_printf(pilot_workload_t *wl, const char* prefix, const cha
 
     if (NULL == wl->tui_) {
         cout << prefix << buf.get();
+#ifdef PILOT_WITH_TUI
     } else {
         *(wl->tui_) << prefix << buf.get();
+#endif
     }
     g_in_mem_log_buffer << buf.get();
 }
@@ -525,8 +539,10 @@ void pilot_ui_printf_hl(pilot_workload_t *wl, const char* format, ...) noexcept 
     va_start(args, format);
     if (NULL == wl->tui_) {
         _pilot_ui_printf(wl, "", format, args);
+#ifdef PILOT_WITH_TUI
     } else {
         _pilot_ui_printf(wl, "</13>", format, args);
+#endif
     }
     va_end(args);
 }
