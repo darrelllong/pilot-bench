@@ -68,10 +68,9 @@ TEST(PilotCLIUnitTest, ExtractCSVFields) {
 }
 
 int main(int argc, char **argv) {
-    // this does away a gtest warning message, and we don't care about execution time
+    // Use a deterministic death-test backend across environments.
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-
 

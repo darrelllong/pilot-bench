@@ -270,7 +270,7 @@ int handle_analyze(int argc, const char** argv) {
                     ++lineno;
                 } catch (const boost::bad_lexical_cast &e) {
                     if (1 == lineno && -1 == ignore_lines) {
-                        warning_log << "Ignoring first line in input. It might be a header. Use `-i 1` to suppress this warning. Line data: \"" << line << '"';
+                        warning_log << "Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: \"" << line << '"';
                         ++lineno;
                         continue;
                     } else {

@@ -34,23 +34,41 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 
 set -euo pipefail
-cd `dirname $0`
+cd "$(dirname "$0")"
 
 LIB_ARG=()
+TMP_PROBE_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_PROBE_DIR"' EXIT
+
+probe_link() {
+    local -a extra_link
+    local -a cmd
+    extra_link=()
+    if [ "$#" -gt 0 ]; then
+        extra_link=("$@")
+    fi
+    cmd=(c++ -x c++ - -std=c++11 -o "$TMP_PROBE_DIR/probe_link")
+    if [ "${#extra_link[@]}" -gt 0 ]; then
+        cmd+=("${extra_link[@]}")
+    fi
+    cmd+=(-lpilot)
+    cat <<'EOF' | "${cmd[@]}"
+int main() { return 0; }
+EOF
+}
+
 # Search for libpilot
-if ! ld -lpilot &>/dev/null; then
+if ! probe_link; then
     echo "libpilot not in default search path, searching for other locations"
     LIB_SEARCH_PATHS=(../build/lib ../../../lib)
-    for SEARCH_PATH in ${LIB_SEARCH_PATHS[@]}; do
-        if ! ld -L${SEARCH_PATH} -lpilot &>/dev/null; then
-            continue
-        else
+    for SEARCH_PATH in "${LIB_SEARCH_PATHS[@]}"; do
+        if probe_link "-L${SEARCH_PATH}"; then
             echo "libpilot found in $SEARCH_PATH"
-            LIB_ARG+=(-L${SEARCH_PATH})
+            LIB_ARG+=("-L${SEARCH_PATH}")
             break
         fi
     done
-    if [ ${#LIB_ARG[@]} -eq 0 ]; then
+    if [ "${#LIB_ARG[@]}" -eq 0 ]; then
         echo "Cannot find libpilot. Please install a Pilot package or compile Pilot from source."
         exit 3
     fi
@@ -59,22 +77,47 @@ else
 fi
 
 HEADER_ARG=()
+
+probe_header() {
+    local -a include_flags
+    local -a cmd
+    include_flags=()
+    if [ "$#" -gt 0 ]; then
+        include_flags=("$@")
+    fi
+    cmd=(c++ -x c++ -std=c++11 -fsyntax-only)
+    if [ "${#include_flags[@]}" -gt 0 ]; then
+        cmd+=("${include_flags[@]}")
+    fi
+    cmd+=(-)
+    cat <<'EOF' | "${cmd[@]}"
+#include <pilot/libpilot.h>
+EOF
+}
+
 # Search for header files
-if ! echo "#include <pilot/libpilot.h>" | cc -E - &>/dev/null; then
+if ! probe_header; then
     echo "Pilot header files not in default search path, searching for other locations"
     HEADER_ARG=(-I../include -I../lib/interface_include -I../build)
-    if ! echo "#include <pilot/libpilot.h>" | cc -E ${HEADER_ARG[@]} - &>/dev/null; then
+    if ! probe_header "${HEADER_ARG[@]}"; then
         HEADER_ARG=(-I../../../include)
-        if ! echo "#include <pilot/libpilot.h>" | cc -E ${HEADER_ARG[@]} - &>/dev/null; then
+        if ! probe_header "${HEADER_ARG[@]}"; then
             echo "Cannot find Pilot header files. Please install a Pilot package or compile Pilot from source."
             exit 3
         fi
     fi
-    echo "Found Pilot header files using compiling option ${HEADER_ARG[@]}"
+    echo "Found Pilot header files using compiling option ${HEADER_ARG[*]}"
 else
     echo "Found Pilot header in default search path"
 fi
 
-c++ ${HEADER_ARG[@]:-} ${LIB_ARG[@]:-} --std=c++11 -g -O2 -o benchmark_hash benchmark_hash.cc -lpilot
+build_cmd=(c++ --std=c++11 -g -O2 -o benchmark_hash benchmark_hash.cc -lpilot)
+if [ "${#HEADER_ARG[@]}" -gt 0 ]; then
+    build_cmd+=("${HEADER_ARG[@]}")
+fi
+if [ "${#LIB_ARG[@]}" -gt 0 ]; then
+    build_cmd+=("${LIB_ARG[@]}")
+fi
+"${build_cmd[@]}"
 
 echo "All examples built successfully."

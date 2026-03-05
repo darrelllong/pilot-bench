@@ -112,8 +112,8 @@ grep -q "subsession_autocorrelation_coefficient 0.646682" "$TMPFILE"
 ./bench analyze unit_test_analyze_input_3col_with_malformed_header.csv -f 1 >$TMPFILE || :
 grep -q '<fatal> Failed to extract a float number from from field 1 in line 2, malformed data? Aborting. Line data: "ID,Data,Some other data"' $TMPFILE
 ./bench analyze unit_test_analyze_input_3col_with_header.csv -f 1 >$TMPFILE
-grep -q '<warning> Ignoring first line in input. It might be a header. Use `-i 1` to suppress this warning. Line data: "ID,Data,Some other data"' $TMPFILE
+grep -q '<warning> Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: "ID,Data,Some other data"' $TMPFILE
 check_file
 ./bench analyze unit_test_analyze_input_3col_with_header.csv -f 1 -i 1 >$TMPFILE
-grep -q '<warning> Ignoring first line in input. It might be a header. Use `-i 1` to suppress this warning. Line data: "ID,Data,Some other data"' $TMPFILE && false
+grep -q '<warning> Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: "ID,Data,Some other data"' $TMPFILE && false
 check_file
