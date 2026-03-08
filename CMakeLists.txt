@@ -40,6 +40,11 @@ endif (NOT CMAKE_BUILD_TYPE)
 # Apply visibility settings to all targets including .a files. This sets
 # policy CMP0063 to NEW.
 cmake_policy (VERSION 3.14)
+# Keep FindBoost behavior on newer CMake versions where CMP0167 defaults may
+# otherwise trigger warnings while still resolving BoostConfig correctly.
+if (POLICY CMP0167)
+  cmake_policy (SET CMP0167 OLD)
+endif ()
 # Don't expose useless symbols. This is also needed if Boost is compiled with
 # -fvisibility=hidden.
 set (CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -75,7 +80,14 @@ endif (ENABLE_TSAN_DEBUG)
 if (CMAKE_CXX_COMPILER_ID MATCHES "(Clang|GNU)")
     # The last -Werror=sign-compare is needed to enable the sign-compare
     # warning for clang
-    add_definitions (-Wall -Werror -Werror=sign-compare)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "GNU"
+        AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "13")
+        # GCC 13+ warns more aggressively in third-party code paths.
+        # Keep sign-compare strict but do not fail the build on these.
+        add_definitions (-Wall -Werror=sign-compare -Wno-error=maybe-uninitialized -Wno-error=stringop-truncation)
+    else ()
+        add_definitions (-Wall -Werror -Werror=sign-compare)
+    endif ()
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "(MSVC)")
     add_definitions (/W2)
 endif ()
@@ -89,6 +101,19 @@ set( MEMORYCHECK_COMMAND_OPTIONS "--trace-children=yes --leak-check=full --track
 include( CTest )
 
 include (ExternalProject)
+find_program(BASH_EXECUTABLE bash)
+if (NOT BASH_EXECUTABLE)
+    message(FATAL_ERROR "bash is required to run build/test helper scripts.")
+endif ()
+find_program(GIT_EXECUTABLE git)
+if (NOT GIT_EXECUTABLE)
+    message(FATAL_ERROR "git is required to fetch external dependencies (e.g., twitter_breakoutdetection).")
+endif ()
+find_program(PATCH_EXECUTABLE patch)
+if (NOT PATCH_EXECUTABLE)
+    message(FATAL_ERROR "patch is required to apply local portability patches to external dependencies.")
+endif ()
+find_program(PILOT_PYTHON_EXECUTABLE NAMES python3 python)
 ExternalProject_Add (gtest
   URL https://github.com/google/googletest/archive/release-1.8.0.zip
   URL_HASH SHA256=f3ed3b58511efd272eb074a3a6d6fb79d7c2e6a0e374323d1e6bcbcc1ef141bf

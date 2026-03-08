@@ -12,7 +12,7 @@ ExternalProject_Add (twitter_breakoutdetection
   GIT_TAG 7ae3fc4
 
   PREFIX ${CMAKE_CURRENT_BINARY_DIR}/twitter_breakoutdetection
-  PATCH_COMMAND bash "${CMAKE_SOURCE_DIR}/cmake/patch_twitter_bd.sh" "${CMAKE_CURRENT_LIST_DIR}/twitter_breakoutdetection_pilot.patch"
+  PATCH_COMMAND ${BASH_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/patch_twitter_bd.sh" "${CMAKE_CURRENT_LIST_DIR}/twitter_breakoutdetection_pilot.patch"
   CONFIGURE_COMMAND ""
   BUILD_COMMAND ""
   INSTALL_COMMAND ""
@@ -159,12 +159,17 @@ add_test (NAME unit_test_wps
 if (WITH_PYTHON AND NOT (ENABLE_ASAN_DEBUG AND CMAKE_BUILD_TYPE EQUAL "Debug"))
   # ASan can't be used with a Python module. You'd get an error like
   # ==1777==ASan runtime does not come first in initial library list; you should either link runtime to your application or manually preload it with LD_PRELOAD.
+  if (NOT PILOT_PYTHON_EXECUTABLE)
+    message(FATAL_ERROR "WITH_PYTHON is ON but no python interpreter was found (searched python3, python).")
+  endif ()
   add_test (NAME unit_test_python_statistics
-            COMMAND bash -c "PYTHONPATH=$<TARGET_FILE_DIR:pilot_sharedlib> python ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_python_statistics.py")
+            COMMAND ${CMAKE_COMMAND} -E env
+                    "PYTHONPATH=$<TARGET_FILE_DIR:pilot_sharedlib>"
+                    ${PILOT_PYTHON_EXECUTABLE}
+                    ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_python_statistics.py)
 endif (WITH_PYTHON AND NOT (ENABLE_ASAN_DEBUG AND CMAKE_BUILD_TYPE EQUAL "Debug"))
 # Disabled this test because it is too long.
 # add_test (NAME unit_test_macros
 #		  COMMAND unit_test_macros)
 add_test (NAME func_test_seq_write
 		  COMMAND func_test_seq_write -o /tmp/test_output_file --no-tui -d 240)
-

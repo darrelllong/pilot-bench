@@ -59,7 +59,8 @@ endif (WITH_LUA)
 # "pilot" is an optional alias for the "bench" command
 add_custom_command(TARGET bench POST_BUILD
                    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-                   COMMAND if [ ! -e pilot ]\; then ln -s bench pilot\; fi)
+                   COMMAND ${CMAKE_COMMAND} -E remove -f pilot
+                   COMMAND ${CMAKE_COMMAND} -E create_symlink bench pilot)
 
 # tests
 add_custom_target(copy_test_files ALL

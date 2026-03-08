@@ -54,6 +54,20 @@
 
 namespace pilot {
 namespace csv {
+        inline void copy_cstr_trunc(char* dst, std::size_t dst_size, const char* src){
+                if(dst_size == 0){
+                        return;
+                }
+                if(src == nullptr){
+                        dst[0] = '\0';
+                        return;
+                }
+                const std::size_t src_len = std::strlen(src);
+                const std::size_t copy_len = std::min(src_len, dst_size - 1);
+                std::memcpy(dst, src, copy_len);
+                dst[copy_len] = '\0';
+        }
+
         ////////////////////////////////////////////////////////////////////////////
         //                                 LineReader                             //
         ////////////////////////////////////////////////////////////////////////////
@@ -78,8 +92,7 @@ namespace csv {
                         }
                        
                         void set_file_name(const char*file_name){
-                                std::strncpy(this->file_name, file_name, max_file_name_length);
-                                this->file_name[max_file_name_length] = '\0';
+                                copy_cstr_trunc(this->file_name, max_file_name_length + 1, file_name);
                         }
 
                         char file_name[max_file_name_length+1];
@@ -426,8 +439,7 @@ namespace csv {
                 }
 
                 void set_file_name(const char*file_name){
-                        strncpy(this->file_name, file_name, error::max_file_name_length);
-                        this->file_name[error::max_file_name_length] = '\0';
+                        copy_cstr_trunc(this->file_name, error::max_file_name_length + 1, file_name);
                 }
 
                 const char*get_truncated_file_name()const{
@@ -509,8 +521,7 @@ namespace csv {
                         }
                        
                         void set_column_name(const char*column_name){
-                                std::strncpy(this->column_name, column_name, max_column_name_length);
-                                this->column_name[max_column_name_length] = '\0';
+                                copy_cstr_trunc(this->column_name, max_column_name_length + 1, column_name);
                         }
 
                         char column_name[max_column_name_length+1];
@@ -525,8 +536,7 @@ namespace csv {
                         }
                        
                         void set_column_content(const char*column_content){
-                                std::strncpy(this->column_content, column_content, max_column_content_length);
-                                this->column_content[max_column_content_length] = '\0';
+                                copy_cstr_trunc(this->column_content, max_column_content_length + 1, column_content);
                         }
 
                         char column_content[max_column_content_length+1];
@@ -1254,4 +1264,3 @@ namespace csv {
 } // namespace csv
 } // namespace pilot
 #endif
-

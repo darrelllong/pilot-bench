@@ -702,7 +702,7 @@ void pilot_workload_t::set_baseline(size_t piid, pilot_reading_type_t rt,
 int pilot_workload_t::load_baseline_file(const char *filename) {
     // piid, readings_num, readings_mean, reading_var, ur_num, ur_mean, ur_var
     typedef tuple<size_t, ssize_t, double, double, ssize_t, double, double> rec_t;
-    size_t piid;
+    size_t piid = 0;
     ssize_t r_num, ur_num;
     double r_mean, r_var, ur_mean, ur_var;
     vector<rec_t> data;

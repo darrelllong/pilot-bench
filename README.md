@@ -43,6 +43,37 @@ following mailing lists:
 
 Installation guide: https://docs.ascar.io/install.html
 
+# BUILD FROM SOURCE (HEADLESS DEFAULT, NO CURSES/TUI)
+
+Pilot supports two build modes:
+
+* `WITH_TUI=OFF` (default): headless CLI-only build, no curses/CDK dependency.
+* `WITH_TUI=ON`: builds the optional curses/CDK text UI.
+
+For CI, remote hosts, containers, and scripted usage, use the default
+headless mode:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWITH_TUI=OFF
+cmake --build build -j
+```
+
+The resulting CLI is:
+
+```bash
+build/cli/bench
+```
+
+To enable the interactive text UI, build with:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWITH_TUI=ON
+cmake --build build -j
+```
+
+`WITH_TUI=ON` requires curses development headers/libraries and builds/fetches
+additional text-UI dependencies.
+
 # RUN IT
 
 Please see the tutorials: https://docs.ascar.io/tutorial-list.html

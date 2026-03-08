@@ -61,6 +61,7 @@
 #include <boost/math/distributions/students_t.hpp>
 #include <boost/shared_ptr.hpp>
 #include <algorithm>
+#include <cstdarg>
 #include <cstdlib>
 #include <sys/stat.h>
 #include "common.h"

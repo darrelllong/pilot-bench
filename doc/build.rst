@@ -10,14 +10,60 @@ Build ASCAR Pilot
 
 .. include:: supported-os.rst
 
-.. include:: Requirements-and-Installation-Instructions.rest
+Requirements
+************
+
+Core build requirements (all builds):
+
+* C++ toolchain
+* CMake
+* Boost development libraries
+* ``git`` and ``patch`` (used by CMake ``ExternalProject`` steps)
+* ``bash`` (used by helper patch/test scripts)
+
+Optional requirements:
+
+* ``WITH_TUI=ON``: curses development headers/libraries (ncurses/CDK)
+* ``WITH_PYTHON=ON``: Python interpreter plus matching ``libpython`` and
+  Boost.Python
+* ``WITH_LUA=ON``: Lua and readline development libraries
+
+Build modes
+***********
+
+Pilot supports two explicit build modes:
+
+* ``WITH_TUI=OFF`` (default): headless CLI build with no curses/CDK dependency.
+* ``WITH_TUI=ON``: headless CLI plus curses/CDK text UI.
+
+Quickstart: Headless Build (No Curses/TUI)
+******************************************
+
+The default and recommended build path is headless:
+
+.. code-block:: bash
+
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWITH_TUI=OFF
+   cmake --build build -j
+
+The resulting CLI binary is ``build/cli/bench``.
+
+Optional: Build with TUI
+************************
+
+Enable the curses/CDK text UI only when you need it:
+
+.. code-block:: bash
+
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWITH_TUI=ON
+   cmake --build build -j
 
 
 Build Options
 *************
 
 The following are configuration options that are supported by Pilot's
-CMake builder. To set an option, use: `-DOPT=VAL`. For example:
+CMake builder. To set an option, use: ``-DOPT=VAL``. For example:
 
 * Linux (CentOS 7) to use the system's Python 2.7 you can set
   ``-DWITH_PYTHON=ON -DPYTHON_LIBRARY=/usr/lib64/libpython2.7.so -DPYTHON_INCLUDE_DIR=/usr/include/python2.7``.
@@ -31,11 +77,12 @@ CMake builder. To set an option, use: `-DOPT=VAL`. For example:
 =================== ================================================================================== ================ ==========
 Option              Description                                                                        Default          Introduced
 =================== ================================================================================== ================ ==========
-CMAKE_BUILD_TYPE    Build type                                                                         `RelWithDebInfo` 0.1
+CMAKE_BUILD_TYPE    Build type                                                                         ``RelWithDebInfo`` 0.1
+WITH_TUI            Build curses/CDK text UI [#f4]_                                                    OFF              0.14
 WITH_PYTHON         Build Python binding (you may also want to set the following three options) [#f1]_ OFF              0.2
 PYTHON_LIBRARY      The path of the libpython library                                                  Auto detect      0.2
 PYTHON_INCLUDE_DIR  The path of pyconfig.h [#f2]_                                                      Auto detect      0.2
-BOOST_PYTHON_MODULE The name of the Boost.Python module [#f3]_                                         `python`         0.2
+BOOST_PYTHON_MODULE The name of the Boost.Python module [#f3]_                                         ``python``         0.2
 =================== ================================================================================== ================ ==========
 
 .. rubric:: Footnotes
@@ -43,7 +90,7 @@ BOOST_PYTHON_MODULE The name of the Boost.Python module [#f3]_                  
 .. [#f1] To enable building the Pilot Python binding, Boost.Python and
          libpython are needed and their versions have to match (e.g.,
          Boost.Python3 has to be used if you use libpython3.x). Pilot
-         uses the `python` interpreter as designated by shell `PATH`,
+         uses the ``python`` interpreter as designated by shell ``PATH``,
          and tries to find the location of `libboost-python.so` and
          libpython automatically. If the detection fails or if the
          detected components have mismatched versions or if you want
@@ -60,7 +107,7 @@ BOOST_PYTHON_MODULE The name of the Boost.Python module [#f3]_                  
          line invokes the Python interpreter of the same version of
          your libpython; importing a module that is linked to a
          different version of libpython would lead to crash. You can
-         do so by tweaking the order of directories in `PATH` or using
+         do so by tweaking the order of directories in ``PATH`` or using
          a Python virtualenv. Refer to the documentation of your shell
          and Python documentation for details.
 
@@ -71,10 +118,15 @@ BOOST_PYTHON_MODULE The name of the Boost.Python module [#f3]_                  
          `libboost-python-py2*.so` or `libboost-python-py3*.so`. This
          library has to match the version of libpython and Python
          interpreter you want to use. For instance, you need to set it
-         to `python-py35` if you want to build the Python binding for
+         to ``python-py35`` if you want to build the Python binding for
          Python 3.5 on Ubuntu 16.04 LTS; you need to set it to
-         `python3` if you are using Python 3.* and a vanilla Boost
+         ``python3`` if you are using Python 3.* and a vanilla Boost
          library.
+
+.. [#f4] ``WITH_TUI=OFF`` avoids curses/CDK dependencies and is the
+         recommended mode for headless hosts, CI, and scripted runs.
+         ``WITH_TUI=ON`` enables the interactive text UI and requires
+         curses development headers and libraries.
 
 Build the documentation
 ***********************
