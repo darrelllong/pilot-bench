@@ -1079,6 +1079,15 @@ DLL_PUBLIC size_t pilot_set_session_duration_limit(pilot_workload_t *wl, size_t 
 DLL_PUBLIC double pilot_set_autocorrelation_coefficient(pilot_workload_t *wl, double ac) NOEXCEPT;
 
 /**
+ * \brief Set the confidence level used when computing confidence intervals.
+ * @param[in] wl pointer to the workload struct
+ * @param confidence_level probability that the true mean falls within the
+ *        reported interval, e.g. 0.90 or 0.95 (default: 0.95).
+ * @return previous confidence level
+ */
+DLL_PUBLIC double pilot_set_confidence_level(pilot_workload_t *wl, double confidence_level) NOEXCEPT;
+
+/**
  * \brief Set the baseline for comparison
  * This function sets the baseline for a certain reading type of a certain
  * PIID. After setting this baseline, the workload will be kept running until a

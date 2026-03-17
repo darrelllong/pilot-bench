@@ -1778,6 +1778,13 @@ double pilot_set_autocorrelation_coefficient(pilot_workload_t *wl, double ac) no
     return old_ac;
 }
 
+double pilot_set_confidence_level(pilot_workload_t *wl, double confidence_level) noexcept {
+    ASSERT_VALID_POINTER(wl);
+    double old = wl->confidence_level_;
+    wl->confidence_level_ = confidence_level;
+    return old;
+}
+
 void pilot_set_baseline(pilot_workload_t *wl, size_t piid, pilot_reading_type_t rt,
         double baseline_mean, size_t baseline_sample_size, double baseline_var) noexcept {
     ASSERT_VALID_POINTER(wl);

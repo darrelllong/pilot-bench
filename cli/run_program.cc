@@ -313,6 +313,7 @@ int handle_run_program(int argc, const char** argv) {
             ("ac,a", po::value<double>(), "Set the required range of autocorrelation coefficient. arg should be a value within (0, 1], and the range will be set to [-arg,arg]")
             ("ci,c", po::value<double>(), "The required width of confidence interval (absolute value). Set it to -1 to disable CI (absolute value) check.")
             ("ci-perc", po::value<double>(), "The required width of confidence interval (as the percentage of mean). Set it to -1 disables CI (percent of mean) check. If both ci and ci-perc are set, the narrower one will be used. See preset below for the default value.")
+            ("confidence-level", po::value<double>(), "Confidence level for interval estimation, e.g. 0.90 or 0.95 (default: 0.95). Lower values require fewer samples to converge.")
             ("duration-col,d", po::value<size_t>(), "Set the column (0-based) of the round duration in seconds for WPS analysis.")
             ("env", po::value<std::vector<string> >()->multitoken(), "Environment variable to pass to program, formatted as \"NAME=VALUE\". This option can be used to set variables such as LD_PRELOAD that should be set only for the benchmark program and not for Pilot. It may be specified multiple times.")
             ("min-sample-size,m", po::value<size_t>(), "The required minimum subsession sample size (default to 30, also see Preset Modes below)")
@@ -627,6 +628,17 @@ int handle_run_program(int argc, const char** argv) {
         }
         pilot_set_autocorrelation_coefficient(g_wl.get(), ac);
         info_log << "Setting the limit of autocorrelation coefficient to " << ac;
+
+        double confidence_level = 0.95;
+        if (vm.count("confidence-level")) {
+            confidence_level = vm["confidence-level"].as<double>();
+            if (confidence_level <= 0 || confidence_level >= 1) {
+                fatal_log << "Valid range for --confidence-level is (0, 1), e.g. 0.90 or 0.95";
+                return 2;
+            }
+        }
+        pilot_set_confidence_level(g_wl.get(), confidence_level);
+        info_log << "Setting confidence level to " << confidence_level;
 
         if (vm.count("min-sample-size")) {
             ms = vm["min-sample-size"].as<size_t>();
