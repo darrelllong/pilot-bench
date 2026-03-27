@@ -1,6 +1,6 @@
 # Pilot Benchmark Framework
 
-![Pilot](assets/pilot.jpg)
+<img src="assets/pilot.jpg" width="50%" />
 
 The Pilot Benchmark Framework provides a tool (`bench`) and a library
 (`libpilot`) to automate computer performance measurement. It answers
