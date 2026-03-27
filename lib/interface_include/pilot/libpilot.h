@@ -981,6 +981,15 @@ DLL_PUBLIC void pilot_set_short_round_detection_threshold(pilot_workload_t *wl, 
 DLL_PUBLIC void pilot_set_required_confidence_interval(pilot_workload_t *wl, double percent_of_mean, double absolute_value) NOEXCEPT;
 
 /**
+ * \brief Set the confidence level used when computing confidence intervals.
+ * @param[in] wl pointer to the workload struct
+ * @param confidence_level probability that the true mean falls within the
+ *        reported interval, e.g. 0.90 or 0.95 (default: 0.95).
+ * @return previous confidence level
+ */
+DLL_PUBLIC double pilot_set_confidence_level(pilot_workload_t *wl, double confidence_level) NOEXCEPT;
+
+/**
  * \brief Calculate the work amount needed for the round duration to meet
  * short_round_detection_threshold_
  * @param[in] wl pointer to the workload struct

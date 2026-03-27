@@ -45,6 +45,7 @@ The main documentation for the site is organized into the following sections:
    install
    tutorial-list
    features
+   reference
 ..   settings
 ..   support
 ..   known-issues

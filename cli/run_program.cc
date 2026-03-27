@@ -342,6 +342,7 @@ int handle_run_program(int argc, const char** argv) {
                     "            \tconfidence interval: 10% of mean,\n"
                     "            \tmin. subsession sample size: 200,\n"
                     "            \tworkload round duration threshold: 20 seconds (only used when work amount is set)")
+            ("confidence-level", po::value<double>(), "Confidence level for interval estimation, e.g. 0.90 or 0.95 (default: 0.95). Lower values require fewer rounds to converge.")
             ("quiet,q", "Enable quiet mode")
             ("session-limit,s", po::value<int>(), "Set the session duration limit in seconds. Pilot will stop with error code 13 if the session runs longer (default: unlimited).")
             ("tui", "Enable the text user interface")
@@ -630,6 +631,16 @@ int handle_run_program(int argc, const char** argv) {
         }
         pilot_set_autocorrelation_coefficient(g_wl.get(), ac);
         info_log << "Setting the limit of autocorrelation coefficient to " << ac;
+
+        if (vm.count("confidence-level")) {
+            double cl = vm["confidence-level"].as<double>();
+            if (cl <= 0 || cl >= 1) {
+                fatal_log << "Valid range for --confidence-level is (0, 1), e.g. 0.90 or 0.95";
+                return 2;
+            }
+            pilot_set_confidence_level(g_wl.get(), cl);
+            info_log << "Setting confidence level to " << cl;
+        }
 
         if (vm.count("min-sample-size")) {
             ms = vm["min-sample-size"].as<size_t>();

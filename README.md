@@ -57,6 +57,12 @@ readable directly on GitHub or buildable into HTML with Sphinx.
 | [Warm-up and Cool-Down Phase Detection](doc/features/warm-up-and-cool-down-phase-detection.rst) | EDM change-point detection and the WPS linear regression model |
 | [Comparing Results](doc/features/comparing-results.rst) | Welch's t-test and the algorithm for ranking benchmark results |
 
+### Command-Line Reference
+
+| Document | Description |
+|---|---|
+| [Command-Line Reference](doc/reference.rst) | All flags and options for `bench run_program`, `bench analyze`, and `bench detect_changepoint_edm`; preset table; confidence level vs. CI width explained |
+
 ## Build from Source
 
 Pilot supports two build modes:
