@@ -144,17 +144,62 @@ What each flag means:
     The workload command. ``%WORK_AMOUNT%`` is a macro that Pilot replaces
     with the work amount it has chosen for each round.
 
-**Setting the confidence level** (this fork only):
+**Statistical rigor: presets and confidence level**
+
+The ``--preset`` flag controls how strictly Pilot requires samples to be
+independent before computing a CI. It sets the autocorrelation tolerance
+threshold:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 30 55
+
+   * - Preset
+     - Autocorrelation limit
+     - When to use
+   * - ``quick``
+     - ±0.8 (lenient)
+     - Fast sanity checks; may underestimate variance on correlated workloads
+   * - ``normal``
+     - ±0.2
+     - General use; good balance of speed and statistical validity
+   * - ``strict``
+     - ±0.1
+     - Publication-quality results; matches the recommendation in Ferrari (1978)
+
+The default is ``quick``. For rigorous results, use ``normal`` or ``strict``:
+
+.. code-block:: bash
+
+   bench run_program --preset normal \
+       -d 0 --wps -w 1,5000 \
+       -- ./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%
+
+The ``--confidence-level`` flag (default: 0.95) sets the probability that
+the true mean falls within the reported CI. Common choices:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Value
+     - Meaning
+   * - ``0.90``
+     - 90% CI — wider tolerance, fewer rounds needed
+   * - ``0.95``
+     - 95% CI — standard in most published benchmarks (default)
+   * - ``0.99``
+     - 99% CI — stricter guarantee, more rounds needed
 
 .. code-block:: bash
 
    bench run_program \
        -d 0 --wps -w 1,5000 \
-       --confidence-level 0.99 \
+       --preset normal --confidence-level 0.99 \
        -- ./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%
 
-The ``--confidence-level`` flag (default: 0.95) controls the confidence
-level used when computing CIs. Use 0.99 for stricter statistical guarantees.
+Both flags apply to all ``bench`` subcommands that collect samples
+(``run_program`` and ``analyze``).
 
 Pilot will print log messages and summary statistics as it runs. See
 :ref:`Interpreting the benchmark output
@@ -275,8 +320,8 @@ Quick Reference
    bench run_program --pi "throughput,MB/s,0,1,1" \
        -- ./run_dd_extract_tp.sh /tmp/io_test 5000
 
-   # Analyze an existing CSV file
-   bench analyze --preset normal data.csv
+   # Analyze an existing CSV file (normal preset, 99% CI)
+   bench analyze --preset normal --cl 0.99 data.csv
 
    # Detect change-points in a time series
    bench detect_changepoint_edm --csv-file data.csv --field 0
