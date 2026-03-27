@@ -1,64 +1,63 @@
 Installation on Linux
 *********************
 
-We prebuild binary packages for the following Linux distributions.
+The original binary packages for Linux are no longer actively maintained.
+**Building from source is the recommended installation method.**
+
+See the :doc:`build` page for full instructions. The short version:
+
+.. code-block:: bash
+
+   # Ubuntu / Debian
+   sudo apt-get install build-essential cmake libboost-all-dev git
+
+   # Fedora / RHEL / CentOS
+   sudo dnf install gcc-c++ cmake boost-devel git
+
+   # Clone and build (headless, no TUI)
+   git clone https://github.com/darrelllong/pilot-bench.git
+   cd pilot-bench
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWITH_TUI=OFF
+   cmake --build build -j
+
+   # The CLI binary is at:
+   build/cli/bench
+
+Historical Binary Packages
+--------------------------
+
+The original project provided pre-built RPM packages for RHEL/CentOS 7 and
+generic x86-64 Linux tarballs. These are no longer updated and are listed
+here for reference only.
 
 Red Hat Enterprise Linux / CentOS 7
-===================================
-
-Import the Project ASCAR Nightly Repo signing key:
+=====================================
 
 .. code-block:: bash
 
    cd /tmp
    wget https://download.ascar.io/pub/repo/RPM-GPG-KEY-ASCAR-NIGHTLY
    rpm --import RPM-GPG-KEY-ASCAR-NIGHTLY
-
-Install the nightly repo configuration file and use yum to install
-the pilot-bench package:
-
-.. code-block:: bash
-
    rpm -ihv https://download.ascar.io/pub/repo/ascar-repo-el-nightly.rpm
    yum install pilot-bench
 
-In the future you can always update to the latest nightly build by
-running:
-
-.. code-block:: bash
-
-   yum update
-
-
-Ubuntu 16.04 LTS x86-64
-=======================
-
-Native build coming soon. For now please use the generic Linux package
-as shown below.
-
-
-Other x86-64 Linux
-==================
-
-This generic Linux build should work on most 64-bit Linux systems:
+Generic x86-64 Linux
+=====================
 
 * Latest nightly build: https://download.ascar.io/pub/repo/linux-generic-x64/nightly/pilot-bench-nightly-latest-linux-x64.tar.gz
 
 * GPG Signature: https://download.ascar.io/pub/repo/linux-generic-x64/nightly/pilot-bench-nightly-latest-linux-x64.tar.gz.asc
 
-Older versions can be found at: https://download.ascar.io/pub/repo/linux-generic-x64/nightly/
-
 .. include:: signing-keys.rst
 
-Set up Python Binding
-=====================
+Setting up the Python Binding
+==============================
 
-To use the Python binding, add the path of ``pilot_bench.so`` to your
-``PYTHONPATH``. For instance:
+If you built with ``-DWITH_PYTHON=ON``, add the path containing
+``pilot_bench.so`` to your ``PYTHONPATH``:
 
 .. code-block:: bash
 
-   export PYTHONPATH=$PYTHONPATH:/home/my/pilot-bench-0.14-Linux/lib
+   export PYTHONPATH="$PYTHONPATH:/path/to/pilot-bench/build/lib"
 
-After that, you should be able to import module ``pilot_bench`` in your Python
-program.
+After that, import it in Python with ``import pilot_bench``.

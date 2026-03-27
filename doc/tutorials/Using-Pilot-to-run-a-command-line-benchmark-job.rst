@@ -1,152 +1,282 @@
-Using Pilot to run a command line benchmark job
+Using Pilot to Run a Command-Line Benchmark Job
 ===============================================
 
-We can use Pilot to run a command line program to do a quick
-benchmark, like running ``dd`` to do a quick I/O performance
-benchmark. This can be done easily by using Pilot's command line
-interface: the ``bench`` program.
+Pilot's command-line tool, ``bench``, can drive any program that writes
+its results to standard output as CSV. This tutorial walks through using
+``dd`` as a concrete I/O benchmark, illustrating the two main approaches.
 
-Let's use ``dd`` as a sample. It is a common practice to use ``dd`` to
-do a quick measurement of the throughput of an I/O device, such as:
+All examples assume you have built Pilot from source. The ``bench`` binary is
+at ``build/cli/bench`` relative to the repository root. Add it to your
+``PATH`` or use the full path.
 
 .. code-block:: bash
 
-   dd if=/dev/zero of=/mnt/testdev/io_test_file bs=1m count=100
+   # From the repository root after building:
+   export PATH="$PWD/build/cli:$PATH"
 
 
-The output on a Linux system would be like:
+The ``dd`` Benchmark
+--------------------
+
+``dd`` is a common tool for measuring raw I/O throughput. A basic invocation
+writes 100 MB to a file:
+
+.. code-block:: bash
+
+   # Linux (bs=1M, output on stderr)
+   dd if=/dev/zero of=/tmp/io_test bs=1M count=100
+
+   # macOS (bs=1m, output on stderr)
+   dd if=/dev/zero of=/tmp/io_test bs=1m count=100
+
+On Linux the stderr output looks like:
 
 .. code-block:: none
 
-   1+0 records in
-   1+0 records out
-   1048576 bytes (1.0 MB) copied, 0.00188192 s, 557 MB/s
+   100+0 records in
+   100+0 records out
+   104857600 bytes (105 MB, 100 MiB) copied, 0.123456 s, 849 MB/s
 
-On Mac OS X it would be a little different:
-
-.. code-block:: none
-
-   10+0 records in
-   10+0 records out
-   10485760 bytes transferred in 0.015194 secs (690127811 bytes/sec)
-
-Here we have two options. Option 1 is to pass the round duration to
-Pilot; Option 2 is to pass the throughput to Pilot. Both options can
-give you the measured throughput along with a desired CI width. Option
-1 is better because the round duration is related to the I/O
-amount. Pilot will do rounds using different I/O amounts in order to
-figure out the duration of warm up and cool down phases, and this can
-give you a more precise result using shorter time. With Option 2 Pilot
-can only get a collection of throughput samples and will not be able
-to do linear analysis on the I/O amount and duration; this makes it
-slower to reach a desired width of CI.
-
-Option 1: Analyzing the Round Duration
---------------------------------------
-
-We need to extract the duration of a benchmark round. A simple wrapper script can do that:
-
-.. code-block:: bash
-
-   OUTPUT_FILE=$1
-   IO_COUNT=$2
-   dd if=/dev/zero of=$OUTPUT_FILE bs=1m count=$IO_COUNT 2>&1 | \
-       grep "bytes transferred" | \
-       sed "s/^.*transferred in \([\.0-9][\.0-9]*\) secs.*/\1/g"
-
-(this file can be found at `examples/benchmark_dd/run_dd.sh`).
-
-Then we can use Pilot's command line program `bench` to run it:
-
-.. code-block:: bash
-
-   bench run_program -d 0 --wps -w 1,5000 -- ./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%
-
-
-If you just build Pilot from the source code and haven't installed it
-yet, the ``bench`` program should be located in ``build/cli/bench``.
-
-The option ``run_program`` is a command that tells bench to run a
-program as designated from the command line. ``-d 0`` sets the column
-of the duration. bench expects the output of the workload program to
-be Comma Separated Values (CSV). Since our workload only prints one
-number as the duration, it is the 0th column so we pass ``-d 0`` to
-bench. ``--wps`` enables the WPS analysis that can detect warm-up and
-cool-down phases automatically. See the Pilot paper and manual for
-more information about different analytical methods. WPS works well
-and should be the default choice for such kind of command line
-benchmark. ``-w 1,5000`` set the valid range of work amount for
-running this workload. We are telling Pilot that it is OK to try to
-run this workload using to do 1 MB to 5000 MB I/O; Pilot will start
-from a small value and use many heuristics to pick the optimal work
-amount, trying to finish the workload and getting a statistical valid
-result fast. ``--`` indicates the end of options for Pilot and the
-beginning of the workload program. All the rest of the command line
-will be used to run the workload program, and you can pass whatever
-parameters you need. We can see that we pass the macro
-``%WORK_AMOUNT%`` to the workload as the I/O count. Pilot will
-substitute that macro with the calculated work amount for running each
-round of workload.
-
-For detailed information about Pilot Bench's output, see
-:ref:`Interpreting the benchmark output <interpreting-the-benchmark-output>`.
-
-Option 2: Analyzing the Throughput Directly
--------------------------------------------
-
-In Option 2, we are not going to use the very handy WPS method, but
-are only feeding a series of throughput that are calculated by ``dd``
-into Pilot. Because of the missing of round duration information,n
-Pilot wouldn't be able to control the I/O amount of each round, thus
-we will have to use a fix I/O amount for each round. Now it is up to
-the user to decide whether the I/O amount is large enough so that each
-round is dominated by the stable phase, not the warm up or cool down
-phase.
-
-The new ``run_dd_extract_tp.sh`` is only different to the previous
-``run_dd.sh`` in that we now extract throughput:
-
-.. code-block:: bash
-
-   OUTPUT_FILE=$1
-   IO_COUNT=$2
-
-   dd if=/dev/zero of=$OUTPUT_FILE bs=1m count=$IO_COUNT 2>&1 | \
-       grep "bytes transferred" | \
-       sed "s/^.*secs (\([\.0-9][\.0-9]*\) bytes.*/\1/g"
-
-(this file can be found at ``examples/benchmark_dd_no_wps/run_dd_extract_tp.sh``).
-
-Then we can use Pilot's command line program ``bench`` to run it:
-
-.. code-block:: bash
-
-   bench run_program --pi "throughput,MB/s,0,1,1" -- ./run_dd_extract_tp.sh IO_SIZE
-
-
-The option ``--pi`` specifies the information of the Performance Index
-we want to measure. The parameter is in this format:
+On macOS:
 
 .. code-block:: none
 
-   Format:     name,unit,column,type,must_satisfy:...
-   name:       name of the PI, can be empty
-   unit:       unit of the PI, can be empty (the name and unit are used only for display
-   purpose)
-   column:     the column of the PI in the csv output of the client program (0-based)
-   type:       0 - ordinary value (like time, bytes, etc.), 1 - ratio (like throughput,
-   speed). Setting the correct type ensures Pilot uses the correct mean
-   calculation method.
-   must_satisfy: 1 - if this PI's CI must satisfy the requirement of CI width; 0 (or
-   missing) - record data only, no need to satisfy
-   more than one PI's information can be separated by colon (:)
+   100+0 records in
+   100+0 records out
+   104857600 bytes transferred in 0.123456 secs (849274880 bytes/sec)
 
-You can run ``./bench run_program --help`` anytime to get this help information.
+Running ``dd`` once gives you one data point with no statistical context.
+Pilot fixes this by running many rounds with varying I/O amounts and
+computing a proper confidence interval.
 
-You should replace ``IO_SIZE`` with something like 5000 to 10,000 MBs
-at least, depending on your storage device's speed. There is no
-general rule for specifying ``IO_SIZE`` because devices can be very
-different, but the rule of thumb is that each round should not be
-shorter than 10 seconds. You can see it is much easier to just use
-Option 1 and let Pilot take care of setting the I/O work amount for
-each round.
+There are two ways to feed results from ``dd`` to Pilot. **Option 1
+(recommended)** passes the round *duration* to Pilot and lets it do WPS
+linear regression with automatic warm-up/cool-down detection. **Option 2**
+passes throughput directly; it is simpler but slower to converge and misses
+the warm-up phase correction.
+
+Option 1: Analyzing the Round Duration (Recommended)
+------------------------------------------------------
+
+The WPS method (see :doc:`../features/warm-up-and-cool-down-phase-detection`)
+needs the round duration and work amount for each run. Write a wrapper script
+that runs ``dd`` with a variable I/O count and prints only the duration in
+seconds:
+
+**Linux** (``examples/benchmark_dd/run_dd.sh``):
+
+.. code-block:: bash
+
+   #!/usr/bin/env bash
+   set -euo pipefail
+
+   OUTPUT_FILE="$1"
+   IO_COUNT="$2"
+
+   dd if=/dev/zero of="$OUTPUT_FILE" bs=1M count="$IO_COUNT" 2>&1 | \
+       awk '/bytes.*copied/ { print $NF }'
+   # Prints the elapsed time in seconds, e.g.: 0.123456
+
+**macOS** (``examples/benchmark_dd/run_dd_mac.sh``):
+
+.. code-block:: bash
+
+   #!/usr/bin/env bash
+   set -euo pipefail
+
+   OUTPUT_FILE="$1"
+   IO_COUNT="$2"
+
+   dd if=/dev/zero of="$OUTPUT_FILE" bs=1m count="$IO_COUNT" 2>&1 | \
+       awk '/bytes transferred/ { print $5 }'
+   # Prints the elapsed time in seconds, e.g.: 0.123456
+
+Make the script executable:
+
+.. code-block:: bash
+
+   chmod +x run_dd.sh   # or run_dd_mac.sh on macOS
+
+Test it manually first to confirm it prints a single number:
+
+.. code-block:: bash
+
+   ./run_dd.sh /tmp/io_test 100
+   # Expected output: a single decimal number, e.g.: 0.132891
+
+Now run Pilot:
+
+.. code-block:: bash
+
+   bench run_program \
+       -d 0 \
+       --wps \
+       -w 1,5000 \
+       -- ./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%
+
+What each flag means:
+
+``run_program``
+    The ``bench`` subcommand for running an external program.
+
+``-d 0``
+    Column 0 of the script's CSV output is the round duration in seconds.
+    ``bench`` expects the workload to print one or more comma-separated
+    values per run; here there is only one value so it is column 0.
+
+``--wps``
+    Enable WPS (Work-Per-Second) analysis. Pilot will run the script with
+    different I/O amounts across rounds, fit a linear model
+    :math:`t = \alpha + w / v_{\text{stable}}`, and extract
+    :math:`v_{\text{stable}}` (stable throughput) along with its CI.
+
+``-w 1,5000``
+    The valid work-amount range in MB. Pilot will try I/O amounts between
+    1 MB and 5000 MB. Adjust the upper bound to match your device: faster
+    devices (NVMe SSDs) need larger work amounts to ensure each round is
+    long enough to escape the warm-up phase; slower devices (spinning disk,
+    network storage) need less.
+
+``--``
+    Separates Pilot's flags from the workload command.
+
+``./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%``
+    The workload command. ``%WORK_AMOUNT%`` is a macro that Pilot replaces
+    with the work amount it has chosen for each round.
+
+**Setting the confidence level** (this fork only):
+
+.. code-block:: bash
+
+   bench run_program \
+       -d 0 --wps -w 1,5000 \
+       --confidence-level 0.99 \
+       -- ./run_dd.sh /tmp/io_benchmark %WORK_AMOUNT%
+
+The ``--confidence-level`` flag (default: 0.95) controls the confidence
+level used when computing CIs. Use 0.99 for stricter statistical guarantees.
+
+Pilot will print log messages and summary statistics as it runs. See
+:ref:`Interpreting the benchmark output
+<interpreting-the-benchmark-output>` for a detailed walkthrough.
+
+Option 2: Analyzing Throughput Directly
+-----------------------------------------
+
+If you cannot control the work amount (for example, the tool does not accept
+a configurable I/O size), you can pass throughput values directly. Write a
+wrapper that extracts the throughput from ``dd``'s output:
+
+**Linux** (``examples/benchmark_dd_no_wps/run_dd_extract_tp.sh``):
+
+.. code-block:: bash
+
+   #!/usr/bin/env bash
+   set -euo pipefail
+
+   OUTPUT_FILE="$1"
+   IO_COUNT="$2"
+
+   dd if=/dev/zero of="$OUTPUT_FILE" bs=1M count="$IO_COUNT" 2>&1 | \
+       awk '/bytes.*copied/ { gsub(/[^0-9.]/, "", $(NF-1)); print $(NF-1) }'
+   # Prints throughput in MB/s, e.g.: 849.3
+
+**macOS** (``examples/benchmark_dd_no_wps/run_dd_extract_tp_mac.sh``):
+
+.. code-block:: bash
+
+   #!/usr/bin/env bash
+   set -euo pipefail
+
+   OUTPUT_FILE="$1"
+   IO_COUNT="$2"
+
+   dd if=/dev/zero of="$OUTPUT_FILE" bs=1m count="$IO_COUNT" 2>&1 | \
+       awk '/bytes transferred/ { print $7 / $5 / 1048576 }'
+   # Prints throughput in MB/s: bytes/sec ÷ 1048576
+
+Test the script manually:
+
+.. code-block:: bash
+
+   chmod +x run_dd_extract_tp.sh
+   ./run_dd_extract_tp.sh /tmp/io_test 5000
+   # Expected output: a single number representing MB/s
+
+Run Pilot with this script:
+
+.. code-block:: bash
+
+   bench run_program \
+       --pi "throughput,MB/s,0,1,1" \
+       -- ./run_dd_extract_tp.sh /tmp/io_test 5000
+
+The ``--pi`` flag specifies the Performance Index to measure. The format is:
+
+.. code-block:: none
+
+   name,unit,column,type,must_satisfy
+
+``name``
+    Display name for the PI (e.g., ``throughput``).
+
+``unit``
+    Display unit (e.g., ``MB/s``). Used only for display.
+
+``column``
+    Zero-based column index in the workload's CSV output.
+
+``type``
+    ``0`` for an ordinary value (time, bytes, count); ``1`` for a ratio
+    (throughput, speed). The type determines the correct mean calculation
+    method: ratios use the harmonic mean; ordinary values use the arithmetic
+    mean.
+
+``must_satisfy``
+    ``1`` if this PI's CI must meet the width requirement before the session
+    ends; ``0`` to record data without requiring it to converge.
+
+Multiple PIs can be specified by separating them with ``:``:
+
+.. code-block:: none
+
+   --pi "read_tp,MB/s,0,1,1:write_tp,MB/s,1,1,1"
+
+Run ``bench run_program --help`` to see the full option reference.
+
+**Note**: with Option 2, Pilot cannot vary the work amount per round (it is
+fixed to whatever the script uses), so it cannot apply the WPS linear model.
+It simply collects a series of throughput readings and computes their CI.
+This means:
+
+* You must choose an I/O size large enough that each round is dominated by
+  stable-phase work (not warm-up/cool-down). A round shorter than 10 seconds
+  is usually too short.
+* Convergence is slower: without varying work amounts, the WPS regression
+  cannot remove non-stable overhead, so more samples are needed to reach the
+  same CI width.
+
+For most practical cases, **Option 1 is the right choice**.
+
+Quick Reference
+---------------
+
+.. code-block:: bash
+
+   # Option 1 — duration-based, WPS analysis (recommended)
+   bench run_program -d 0 --wps -w 1,5000 \
+       -- ./run_dd.sh /tmp/io_test %WORK_AMOUNT%
+
+   # Option 1 — with custom confidence level
+   bench run_program -d 0 --wps -w 1,5000 --confidence-level 0.99 \
+       -- ./run_dd.sh /tmp/io_test %WORK_AMOUNT%
+
+   # Option 2 — throughput-based, no WPS
+   bench run_program --pi "throughput,MB/s,0,1,1" \
+       -- ./run_dd_extract_tp.sh /tmp/io_test 5000
+
+   # Analyze an existing CSV file
+   bench analyze --preset normal data.csv
+
+   # Detect change-points in a time series
+   bench detect_changepoint_edm --csv-file data.csv --field 0

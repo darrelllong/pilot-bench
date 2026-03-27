@@ -2,240 +2,243 @@
 Warm-up and Cool-Down Phase Detection
 =====================================
 
-Performance results are often used to predict the run time of future
-workloads, and it is a common practice to use one number to express
-the performance of a PI. For example, people usually say "the write
-throughput of this device is *X*". Using only one number assumes that
-the device's performance follows a linear model. Linear models
-(:math:`\textit{work amount} = \textit{duration} \times
-\textit{speed}`) are simple, but using only one number can only state
-the device's stable performance and is not adequate when the
-performance of the PI can be significantly affected by a long warm-up
-or cool-down phase.
+Performance results are often used to predict the running time of future
+workloads, and it is common practice to express performance with a single
+number. For example, "the write throughput of this device is *X* MB/s."
+This implicitly assumes a linear model:
+
+.. math::
+
+   \text{duration} = \frac{\text{work amount}}{\text{speed}}.
+
+A linear model is simple and useful, but quoting only one number only
+captures the device's *stable* performance. It is not adequate when the
+measured PI is significantly affected by warm-up or cool-down phases.
 
 .. _fig:surge-write:
 .. figure:: figs/fbench_randomrw_c5_t20_throughput-marked.png
    :scale: 50 %
 
-   Throughput of a multi-node random read write workload. It shows the
-   setup phase, the warm-up phase caused by caching effect, and the
-   cool-down phase caused by shutting down of I/O threads.
+   Throughput of a multi-node random read-write workload, showing the
+   setup phase, the warm-up phase caused by caching effects, and the
+   cool-down phase caused by thread shutdown.
 
-Most computer devices require a setup or warm-up phase before its
-performance can reach a stable level, like shown in
-:numref:`fig:surge-write`. If not properly accounted for, these
-warm-up phases can have a negative impact on the precision of the
-measurement. A common practice is to run the workload for a long time
-and hope the effect of the warm-up phase can be amortized.  However,
-when the duration of the warm-up phase is not known, there is no way
-to know the actual impact on the precision. We describe two methods to
-address different kinds of workloads.
+Most computer devices require a setup or warm-up phase before reaching
+stable performance, as shown in :numref:`fig:surge-write`. If not accounted
+for, these phases reduce the precision of the measurement. A common
+workaround is to run the workload for a long time and hope the warm-up
+effect is amortized — but when the duration of the warm-up phase is unknown,
+there is no way to bound its actual impact on precision.
 
-We consider the following phases of a workload:
+Pilot considers the following phases of a workload:
 
-* The setup phase, including the steps that do not consume work
-  amount, such as allocating memory, initializing variables, and
-  opening files, etc.
-* The warm-up phase when the system starts to perform work but has not
-  yet reached stable performance.
-* The stable phase where the work amount is being consumed at a stable
-  rate.
-* The cool-down phase when the system's performance starts to drop
-  before finishing all the work (this is usually observed in
-  multi-threaded workloads when some but not all threads finish the
-  allocated work and the number of active threads starts to drop at
-  the end of the workload).
+* **Setup phase**: steps that do not consume work — allocating memory,
+  initializing variables, opening files, and so on.
+* **Warm-up phase**: the system is performing work but has not yet reached
+  stable performance (for example, caches are being populated).
+* **Stable phase**: work is consumed at a consistent, stable rate.
+* **Cool-down phase**: performance begins to drop before all work is
+  complete. This is typical in multi-threaded workloads when some threads
+  finish their share of work before others, reducing the number of active
+  threads.
 
+Collectively these are the *non-stable phases*. When a session has multiple
+rounds, each round may or may not have its own non-stable phases, and their
+durations may differ across rounds.
 
-We call them collectively the non-stable phases. When the workload has
-multiple rounds, each round may or may not have its own non-stable
-phases, and when they have, the duration can be different.  We
-consider two cases, the first is when the benchmark can provide unit
-readings, the second is for workloads that cannot provide unit
-readings.
+-----------------------------------------
+Workloads that Can Provide Unit Readings
+-----------------------------------------
 
----------------------------------------
-Workloads that can provide unit reading
----------------------------------------
+When the workload provides unit readings (per-work-unit measurements), Pilot
+can compute shifts in the UR mean to locate change-points, and uses those
+change-points to separate URs into phases.
 
-If the benchmark workload can provide unit readings, which is the
-measurement of each work unit, we can calculate the shift in UR mean
-and use these change-points to separate the URs into phases. Multiple
-change-point detection is a challenging research question, especially
-when we cannot make any assumption about the distribution of the error
-or the underlying process. The method we use also has to be fast to
-calculate and should support online update.
+Multiple change-point detection is a challenging problem, particularly when
+we cannot assume anything about the distribution of the error or the
+underlying process, and when the algorithm must support online updates.
+After evaluating several methods, we found that **E-Divisive with Medians
+(EDM)** [james:stat.ME14]_, published by Matteson and James in 2014, best
+fits our requirements.
 
-After evaluating many change-point detection methods, we found that
-the E-Divisive with Medians (EDM) [james:stat.ME14]_, which is a new
-method published by \citeauthor{matteson:amstat14} in 2014, best fits
-our requirements. EDM is non-parametric (works on mean and variance)
-and robust (performs well for data drawn from a wide range of
-distributions, especially non-normal distributions). EDM's initial
-calculation is :math:`O(n \log n)` and can do update in :math:`O(\log
-n)` time.
+EDM is:
 
-EDM outputs a list of all the change-points in the time series. It is
-common to see many change-points at the start and end of the
-workload. These change-points divide the test data into multiple
-segments. Pilot uses a heuristic method to determine which segment is
-the stable segment: it has to be the longest segment and also dominate
-the test data (containing more than 50% of the samples). This method
-can effectively remove any number of non-stable phases at the
-beginning and the end.
+* **Non-parametric**: it works on the mean and variance of the data without
+  assuming a particular distribution.
+* **Robust**: it performs well on data drawn from a wide range of
+  distributions, including non-normal ones.
+* **Fast**: the initial computation is :math:`O(n \log n)` and each
+  subsequent update is :math:`O(\log n)`.
 
-.. TODO: a graph showing the change-points detected by EDM and how we
-   pick the dominant segment.
+EDM outputs a list of change-points that divide the time series into
+segments. It is common to see multiple change-points at the beginning and
+end of a workload (corresponding to warm-up and cool-down). Pilot uses the
+following heuristic to identify the stable segment: it must be the **longest
+segment** and must contain **more than 50% of all samples**. This
+effectively removes any number of non-stable phases at the start and end of
+the data.
 
 .. _sec_wps_method:
 
-------------------------------------------
-Workloads that cannot provide unit reading
-------------------------------------------
+-------------------------------------------
+Workloads that Cannot Provide Unit Readings
+-------------------------------------------
 
-Some workload cannot be meaningfully separated into units, or requires
-costly changes to the source code for providing work unit-level
-information, or is certified and cannot be modified.  In these cases,
-we designed the following Work-per-second (WPS) Linear Regression
-Method to detect and remove the non-stable phases from the results of
-these workloads. A linear regression model works best when:
+Some workloads cannot be meaningfully divided into units — for example,
+command-line tools that report only a single aggregate result. Others would
+require costly source-code changes to instrument individual work units.
+For these cases, Pilot uses the **Work-per-second (WPS) Linear Regression
+Method** to detect and remove non-stable phases.
 
-* The work amount of the workload is adjustable,
-* There is a linear relationship between the work amount and the
-  duration of the workload,
-* The duration of the setup, warm-up, and cool-down phases are
-  relatively stable across rounds.
+The WPS method works best when:
 
-It is not necessary to check these conditions beforehand. We will know
-that one or more of them are false if the result of the WPS method has
-a very wide CI or a high prediction error. The WPS method also applies
-autocorrelation detection and subsession analysis, which make it more
-tolerant of the inconsistency in measurements.
+* The work amount of the workload is adjustable (Pilot controls it via the
+  ``%WORK_AMOUNT%`` macro).
+* There is a linear relationship between work amount and workload duration.
+* The durations of the setup, warm-up, and cool-down phases are reasonably
+  stable across rounds.
 
-Let :math:`w` be the work amount, :math:`t` be the total duration of
-the workload, :math:`t_{\setup}` be the duration of the setup phase,
-:math:`t_{\warmup}` be the duration of the warm-up phase,
-:math:`t_{\stable}` be the duration of the stable phase,
-:math:`t_{\cooldown}` be the duration of the cool-down phase,
-:math:`w_{\warmup}` be the work amount consumed by the warm-up phase,
-:math:`w_{\stable}` be the work amount consumed by the stable phase,
-and :math:`w_{\cooldown}` be the work amount consumed by the cool-down
-phase. We have (note that the setup phase of a workload does not
-consume work amount)
+If one or more conditions are violated, the WPS method will produce a wide
+CI or high prediction error, making the problem visible. The method also
+applies autocorrelation detection and subsession analysis, which makes it
+tolerant of some measurement inconsistency.
 
-.. math::
+The Linear Model
+~~~~~~~~~~~~~~~~
 
-	t &= t_{\setup} + t_{\warmup} + t_{\stable} + t_{\cooldown} \\
-	w &= w_{\warmup} + w_{\stable} + w_{\cooldown}
+Let:
 
-:math:`v_{\stable}` is the stable system performance we need to
-measure. By definition, it can be calculated from the work amount of
-the stable phase divided by the duration of the stable phase:
+* :math:`w` = work amount for one round
+* :math:`t` = total duration of the round
+* :math:`t_{\text{setup}}` = duration of the setup phase
+* :math:`t_{\text{warmup}}` = duration of the warm-up phase
+* :math:`t_{\text{stable}}` = duration of the stable phase
+* :math:`t_{\text{cooldown}}` = duration of the cool-down phase
+* :math:`w_{\text{warmup}}` = work consumed during the warm-up phase
+* :math:`w_{\text{stable}}` = work consumed during the stable phase
+* :math:`w_{\text{cooldown}}` = work consumed during the cool-down phase
+
+The total duration and total work decompose as (the setup phase does not
+consume work):
 
 .. math::
 
-	v_{\stable} = \frac{w_{\stable}}{t_{\stable}}
+   t &= t_{\text{setup}} + t_{\text{warmup}} + t_{\text{stable}} + t_{\text{cooldown}} \\
+   w &= w_{\text{warmup}} + w_{\text{stable}} + w_{\text{cooldown}}
 
-Combining the three equations, we can have
+The stable-phase performance :math:`v_{\text{stable}}` is the quantity we
+want to measure:
 
 .. math::
 
-	t &= t_{\setup} + t_{\warmup} + \frac{w - w_{\warmup} - w_{\cooldown}}{v_{\stable}} + t_{\cooldown} \\
-	  &= \Big(t_{\setup} + t_{\warmup} + t_{\cooldown} - \frac{w_{\warmup} + w_{\cooldown}}{v_{\stable}} \Big) + \frac{1}{v_{\stable}}w \\
-    t &= \alpha + \frac{1}{v_{\stable}}w
+   v_{\text{stable}} = \frac{w_{\text{stable}}}{t_{\text{stable}}}
+   \quad \Longrightarrow \quad
+   t_{\text{stable}} = \frac{w_{\text{stable}}}{v_{\text{stable}}}
+                     = \frac{w - w_{\text{warmup}} - w_{\text{cooldown}}}{v_{\text{stable}}}.
 
+Substituting into the total duration equation:
 
-This is the model we use in Pilot. Given enough number of :math:`(w,
-t)` pairs, we can use regression to estimate the value of
-:math:`\alpha` and :math:`v_{\stable}`. The current implementation of
-Pilot uses the `Ordinary Least Square estimator
-<https://en.wikipedia.org/wiki/Least_squares>`_ for its simplicity,
-and other estimators can be added when necessary. We need the samples
-to be i.i.d. in order to calculate the CI of :math:`v_{\stable}` using
-the :math:`t`-distribution. We use subsession analysis, which
-calculates the autocorrelation coefficient of input samples and merges
-adjacent correlated samples to create fewer but less correlated
-samples, before running the regression estimator (see
+.. math::
+
+   t &= t_{\text{setup}} + t_{\text{warmup}}
+        + \frac{w - w_{\text{warmup}} - w_{\text{cooldown}}}{v_{\text{stable}}}
+        + t_{\text{cooldown}} \\
+     &= \underbrace{\left(t_{\text{setup}} + t_{\text{warmup}} + t_{\text{cooldown}}
+        - \frac{w_{\text{warmup}} + w_{\text{cooldown}}}{v_{\text{stable}}}\right)}_{\alpha}
+        + \frac{1}{v_{\text{stable}}} \cdot w.
+
+This gives the linear model
+
+.. math::
+
+   t = \alpha + \frac{1}{v_{\text{stable}}} \cdot w,
+
+where :math:`\alpha` is the intercept that lumps together all non-stable
+overhead (setup time, warm-up time, cool-down time, minus the time that
+would have been spent doing stable work during those phases). The slope is
+:math:`1/v_{\text{stable}}`, the reciprocal of stable performance.
+
+Given enough :math:`(w, t)` pairs from multiple rounds, Pilot estimates
+:math:`\alpha` and :math:`v_{\text{stable}}` using `Ordinary Least Squares
+regression <https://en.wikipedia.org/wiki/Least_squares>`_. To compute a
+valid CI for :math:`v_{\text{stable}}` using the *t*-distribution, the
+:math:`(w, t)` samples must be i.i.d. Pilot applies subsession analysis to
+ensure this before running the regression (see
 :doc:`autocorrelation-detection-and-mitigation`).
 
-In addition to the requirements we talked about earlier, linear
-regression requires that the following conditions be met:
+Choosing Work Amounts
+~~~~~~~~~~~~~~~~~~~~~
 
-* The differences between the work amounts of rounds are sufficiently large,
-* The sample size is sufficiently large.
+Linear regression requires that:
 
+* The spread of work amounts across rounds is large enough for the slope to
+  be estimated accurately.
+* The sample size is large enough.
 
-We designed Pilot to keep running the workload at various length and
-for many rounds until the desired width of the CI is reached. Because
-we cannot know the total number of rounds that are needed at the
-beginning, we designed the following algorithm to generate different
-work amount for each round: let :math:`(a,b)` be the valid range for
-the work amount, we pick the midpoint of the interval as the work
-amount for the first round (:math:`a + \tfrac{b-a}{2}`). This midpoint
-divides the interval into two smaller intervals of equal length. We
-then use the midpoints of these intervals for future rounds. Repeating
-this process can give us a sequence of unequal numbers that can be
-used as the work amounts. :numref:`fig:warm-up-removal-work-amounts`
-gives the first few numbers in this sequence as a sample.
+Pilot generates a sequence of work amounts using a **midpoint bisection
+algorithm**. Let :math:`(a, b)` be the valid work-amount range supplied by
+the user. The first round uses the midpoint :math:`a + \frac{b-a}{2}`, which
+divides the interval in two. Future rounds use the midpoints of the resulting
+sub-intervals. This produces a deterministic sequence of distinct, spread-out
+values without prior knowledge of how many rounds will be needed.
+
+:numref:`fig:warm-up-removal-work-amounts` shows the first seven values in
+this sequence.
 
 .. _fig:warm-up-removal-work-amounts:
 .. figure:: figs/warm-up-removal-work-amounts.png
    :scale: 50 %
 
-   Sample sequence of work amounts for the first 7 rounds. Rd.1 is the
-   midpoint of :math:`a` and :math:`b`; Rd.2 is the midpoint of
-   :math:`a` and Rd.1; Rd.3 is the midpoint of Rd.1 and :math:`b`;
-   Rd.8 would be at the midpoint of :math:`a` and Rd.4.
+   Work amounts for the first 7 rounds. Round 1 is the midpoint of
+   :math:`a` and :math:`b`; Round 2 is the midpoint of :math:`a` and
+   Round 1; Round 3 is the midpoint of Round 1 and :math:`b`; and so on.
 
-Pilot takes :math:`a` and :math:`b` from user input. In practice the
-user usually will likely set :math:`a` to 0. This could cause the
-problem that some rounds are too short. Very short rounds are usually
-meaningless because they could be dominated by the non-stable
-phases. Pilot checks the duration after running each round, and if it
-finds that the previous round is shorter than a preset lower bound,
-the result will be stored but not used in analysis. Pilot doubles the
-work amount of the previous round until the round duration is longer
-than the lower bound, and will update :math:`a` to that work
-amount.
+Handling Short Rounds
+~~~~~~~~~~~~~~~~~~~~~
 
-In practice, the algorithm as described above has another drawback
-that the work amount of the first few rounds may be very large if
-:math:`b` is a large number. For instance, if the user wants to
-understand the throughput of a device and uses :math:`(0,
-\mathrm{device size})` for the valid parameter range, the first few
-rounds can be very long, and it would take a long time before the user
-can see the benchmark result. It is important for Pilot to give the
-user a quick (albeit rough) estimation of the result before spending a
-long time refining it. We use the following heuristic method in Pilot
-to solve this problem. Say that we know in round 1 that the time
-needed for finishing work amount :math:`a` is :math:`t_1 = s` seconds,
-and for each new round we want it to be :math:`k` seconds longer than
-the previous round. This means that the nth round would be :math:`t_n
-= s + (n-1)k` seconds long. Therefore, the total duration (:math:`t`)
-of the :math:`n` rounds would be:
+If :math:`a = 0`, some early rounds may be too short to be meaningful
+because they are dominated by non-stable overhead rather than stable-phase
+work. Pilot measures the duration of each completed round. If a round is
+shorter than a preset lower bound (typically 1 second), it is recorded but
+excluded from analysis. Pilot then doubles the work amount of that round
+and retries until the round is long enough, and updates :math:`a` to that
+new minimum work amount.
+
+Pacing Initial Rounds
+~~~~~~~~~~~~~~~~~~~~~
+
+A second problem arises when :math:`b` is very large: the midpoint bisection
+sequence starts with a large work amount, making the first few rounds very
+long and delaying the first result. To ensure Pilot provides a quick
+(if rough) initial estimate, it uses the following heuristic:
+
+Suppose the first round using work amount :math:`a` takes :math:`s` seconds.
+We want each subsequent round to be :math:`k` seconds longer than the
+previous, so the :math:`n`-th round lasts :math:`s + (n-1)k` seconds. The
+total time for :math:`n` rounds is:
 
 .. math::
 
-    t = \sum_{i=1}^n{t_n} =
-    \frac{1}{2} k (n-1) n+n s.
+   T = \sum_{i=1}^{n} [s + (i-1)k] = ns + \frac{k \cdot n(n-1)}{2}.
 
-Now if we want to get the initial result in :math:`t` seconds, we can calculate :math:`k`:
+To get an initial result within :math:`T` seconds, solve for :math:`k`:
 
 .. math::
 
-    k = \frac{2t - 2sn}{n^2 - n}
+   k = \frac{2(T - ns)}{n(n-1)}.
 
-:math:`t` is a tunable parameter with a preset value 60 seconds. The
-number of rounds, :math:`n`, should be greater than 50 in most cases
-cite [chen:hpca12]_ for the central limit theorem to take effect.
+The preset target :math:`T` is 60 seconds. The number of rounds :math:`n`
+should exceed 50 so that the central limit theorem applies [chen:hpca12]_.
 
-Another problem is that the work amount derived from this algorithm
-may be shorter than :math:`\alpha` (sum of the work amount of all
-non-stable phases). The method we use in Pilot to handle this issue is
-that we calculate the value of :math:`\alpha` after each round, and
-use the new value of :math:`\alpha` to update :math:`a`. We also
-remove all results from previous rounds whose work amount is smaller
-than the newly calculated :math:`\alpha`.
+Tracking the Intercept
+~~~~~~~~~~~~~~~~~~~~~~
+
+One additional complication: the midpoint bisection may produce work amounts
+smaller than :math:`\alpha` (the total non-stable work), in which case the
+stable phase is absent from the round and the linear model does not apply.
+Pilot tracks the estimated :math:`\alpha` after each round. Any round whose
+work amount is less than the current estimate of :math:`\alpha` is excluded
+from analysis, and :math:`a` is updated to the current :math:`\alpha`.
 
 .. [chen:hpca12] Tianshi Chen, Yunji Chen, Qi Guo, Olivier Temam, Yue
                  Wu, and Weiwu Hu. Statistical performance comparisons
@@ -244,7 +247,7 @@ than the newly calculated :math:`\alpha`.
                  Architecture (HPCA-18)*. IEEE, 2012.
 
 .. [james:stat.ME14] Nicholas A. James, Arun Kejariwal, and
-                     David S. Matteson. Leveraging Cloud Data to
-                     Mitigate User Experience from "Breaking
-                     Bad". `arXiv:1411.7955
-                     <https://arxiv.org/abs/1411.7955>`_, 2014.
+                     David S. Matteson. Leveraging cloud data to
+                     mitigate user experience from "breaking bad".
+                     `arXiv:1411.7955 <https://arxiv.org/abs/1411.7955>`_,
+                     2014.

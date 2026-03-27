@@ -2,44 +2,56 @@
 Deciding Optimal Session Length
 ===============================
 
-On a high level, a benchmark session comprises many rounds. We
-calculate the CI after collecting new data from each round. The
-session ends when the CIs of all PIs reach the target. Because each
-round can have non-stable phases that are not contributing samples, we
-should maximize the length of each round and minimize the number of
-rounds. This also has the extra benefit of including those work units
-that are far from the beginning of the initial work amount.
+A benchmark session consists of many rounds. After each round, Pilot
+recomputes the CI for all PIs. The session ends when the CIs of all PIs
+reach their target width. Because each round can include non-stable phases
+(warm-up, cool-down) that do not contribute valid samples, Pilot aims to
+**maximize the length of each round and minimize the total number of rounds**.
+Longer rounds mean more stable-phase samples per round and fewer round-start
+overheads overall.
 
-But we cannot begin the first round using the maximum work amount,
-because in many cases the maximum work amount can be very large. This
-is typical in storage benchmarks where the limit can be the total size
-of a storage device, and it would take several dozens of hours to
-finish one round that fully writes a device. In network benchmarks, we
-can even set the maximum work amount to unlimited because these
-workloads can keep running forever. If we start the first round of
-workload with the full work amount, we risk letting the user wait too
-long a time before showing the first result. Therefore, we begin the
-benchmark session with a few short trial rounds to learn the duration
-to work unit ratio.
+However, Pilot cannot simply begin with the maximum work amount. In storage
+benchmarks, the maximum work amount might be the full capacity of a device,
+requiring dozens of hours to complete a single round. In network benchmarks,
+the maximum work amount could be unlimited. Starting a session at maximum
+work amount risks making the user wait an impractically long time before
+seeing any result. Instead, Pilot begins with a few short trial rounds to
+estimate the duration-to-work-amount ratio, then increases the work amount
+systematically.
 
-Workloads that provide unit readings
-------------------------------------
+Workloads that Provide Unit Readings
+-------------------------------------
 
-We treat each unit reading as one measurement. One workload round can
-usually provide hundreds or thousands of measurements, making it
-faster to reach the required sample size. For instance, if a
-sequential write workload writes 500 MB data using 1 MB I/O, we can
-get 500 throughput measurements if the workload saves the duration of
-each write. Pilot sends the unit reading results through the
-non-stable phases removal, performs auto-correlation reduction, and
-uses the rest of the unit readings to calculate the CI. Pilot keeps
-running new rounds of the workload until the desired width of the CI
-is reached.
+When the workload produces unit readings — individual per-work-unit
+measurements — Pilot treats each unit reading as one sample. A single round
+can yield hundreds or thousands of samples. For example, a sequential write
+workload that writes 500 MB in 1 MB increments produces 500 throughput
+measurements if the workload records the duration of each write.
 
-Workloads that cannot provide unit reading
-------------------------------------------
+Pilot processes the unit readings as follows:
 
-These workloads are handled using the WPS method (see
-:ref:`sec_wps_method`), which also performs non-stable phases
-detection and removal, subsession analysis, and decides the optimal
-number of rounds to achieve the desired width of CI.
+1. **Non-stable phase removal**: run change-point detection (EDM) on the
+   unit reading sequence to find and discard warm-up and cool-down phases
+   (see :doc:`warm-up-and-cool-down-phase-detection`).
+2. **Autocorrelation reduction**: apply subsession analysis to the remaining
+   samples until they are approximately i.i.d.
+   (see :doc:`autocorrelation-detection-and-mitigation`).
+3. **CI calculation**: compute the CI of the sample mean using the
+   *t*-distribution. If the CI width has not yet reached the target, run
+   another round.
+
+Because each round can provide many samples, this path tends to converge
+quickly to the desired CI width.
+
+Workloads that Cannot Provide Unit Readings
+--------------------------------------------
+
+These workloads are handled using the WPS (Work-Per-Second) method described
+in :ref:`sec_wps_method`. The WPS method runs the workload at varying work
+amounts, fits a linear model to relate work amount to total round duration,
+and extracts the stable-phase performance from the regression estimate. It
+also applies non-stable phase detection and subsession analysis, and decides
+the optimal number of rounds needed to reach the desired CI width.
+
+The WPS method is appropriate for command-line tools and other workloads that
+report only a single aggregate result per run rather than per-unit timings.

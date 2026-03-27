@@ -2,75 +2,119 @@
 Comparing Results
 =================
 
-The need to compare benchmark results using the shortest possible time
-is our very first motivation for designing Pilot. Not only useful for
-system design and tuning, a handy tool for comparing benchmark results
-can help many tasks in systems research, such as choosing the fastest
-data structure for storing certain data, finding performance
-regressions in software development, and deciding the best parameters
-for storage or network communication. Without using the correct
-statistics method at runtime, most of these decisions were done in an
-ad hoc manner, either prematurely with too little data, or blindly
-wasting time to gather more than necessary data.
+The ability to compare benchmark results quickly and correctly was the
+original motivation for Pilot. This is useful for system design and tuning,
+for finding performance regressions during software development, and for
+choosing the best parameters for storage or network systems. Without applying
+correct statistical methods at runtime, most such comparisons are done
+haphazardly — either terminated too early with too little data, or run far
+longer than necessary.
 
-Suppose we have :math:`n` workloads and the results of them are
-comparable, which means that they are using the same unit of
-measurement and are of the same scale. Now we need to rank (order)
-these workloads according to their results. In some cases we need to
-run these workloads to get new results, in other cases the comparison
-involves old benchmark results. For old results we need three values:
-the mean, subsession sample size, and subsession variance. The
-subsession results (see
-:doc:`autocorrelation-detection-and-mitigation`) are needed because
-i.i.d. is a hard requirement for all the analyses we use in this
-section. For the rest of this section all samples are subsession
-samples that have low autocorrelation.
+Setup
+-----
 
-There are two cases when we consider comparing two benchmark
-results. The first case is when their CIs are not overlapped. In this
-case we can be sure that one is greater than the other at the
-confidence level used to calculate the CIs. The second is when the CIs
-overlap. In this case we use the Welch's unequal variance *t*-test
-[welch:biometrika47]_ (an adaptation of Student's *t*-test) to compare
-the benchmark results, A and B. Welch's *t*-test is more reliable when
-the two samples have unequal variance and unequal sample sizes, which
-are true for most system benchmarks. This test can effectively tell us
-the probability of rejecting a hypothesis and the required sample
-size. Here the null hypothesis (the hypothesis we want to reject) is
-that there is no statistical significant difference between result A
-and B (A = B). We compute the probability (*p*-value) of getting
-results A and B if the null hypothesis is true. Let
-:math:`\overline{x}` be the mean of the result, :math:`\sigma^2` be
-the variance, and :math:`n` be the sample size. We can calculate the
-*p*-value:
+Suppose we have :math:`n` workloads whose results are directly comparable
+(same unit, same scale), and we want to rank them. We may run new
+measurements, or we may compare existing results. For existing results we
+need three values per workload: the **mean**, the **subsession sample
+size**, and the **subsession variance**. We use subsession quantities (see
+:doc:`autocorrelation-detection-and-mitigation`) because i.i.d. samples are
+a hard requirement for all the analyses in this section. Throughout this
+section, all samples are subsession samples with negligible autocorrelation.
+
+Comparing Two Results
+---------------------
+
+There are two cases when comparing two results A and B.
+
+**Case 1: Non-overlapping confidence intervals.** If the CIs of A and B do
+not overlap, we can conclude directly that one is greater than the other at
+the chosen confidence level.
+
+**Case 2: Overlapping confidence intervals.** When CIs overlap, we cannot
+conclude directly — the true means could be equal. In this case Pilot uses
+**Welch's unequal-variance** *t*-**test** [welch:biometrika47]_, an
+adaptation of Student's *t*-test that is more reliable when the two samples
+have unequal variances and unequal sizes. Both conditions are common in
+system benchmarks.
+
+Welch's *t*-test
+~~~~~~~~~~~~~~~~
+
+The null hypothesis is that there is no statistically significant difference
+between A and B (i.e., :math:`\mu_A = \mu_B`). We compute the probability
+(the *p*-value) of observing results at least as different as A and B if the
+null hypothesis were true. A small *p*-value is evidence against the null
+hypothesis.
+
+Let :math:`\overline{x}` denote the sample mean, :math:`\sigma^2` the sample
+variance, and :math:`n` the subsession sample size for each workload. The
+test statistic is
 
 .. math::
 
-    t &= \frac{\overline{x_A} - \overline{x_B}}{\sqrt{\frac{\sigma_A^2}{n_A} + \frac{\sigma_B^2}{n_B}}} \\
-    \nu &= \left\lfloor
-      \frac{\left( \frac{\sigma_A^2}{n_A} + \frac{\sigma_B^2}{n_B} \right)^2 }{ \frac{\sigma_A^4 }{ n_A^2 (n_A - 1)} + \frac{\sigma_B^4 }{ n_B^2 (n_B - 1) } }
-      \right\rfloor \\
-    p &= 2 \cdf(t, \nu)
+   t = \frac{\overline{x}_A - \overline{x}_B}
+            {\sqrt{\dfrac{\sigma_A^2}{n_A} + \dfrac{\sigma_B^2}{n_B}}}.
 
-Above is the Welch-Satterthwaite equation for calculating the degree
-of freedom (:math:`\nu`), and :math:`\cdf(t,n)` is the Student's
-*t*-distribution with :math:`\nu` degrees of freedom. We multiply it
-by 2 to calculate the two-tailed distribution. Pilot uses the first
-equation to calculate the optimal subsession sample size.
+The numerator is the difference of sample means. The denominator is the
+standard error of that difference, pooled across the two samples without
+assuming equal variance. A larger :math:`|t|` indicates that the observed
+difference is larger relative to the measurement noise.
 
-The comparing result algorithm runs until:
+This statistic follows an approximate *t*-distribution, but not the standard
+one — the degrees of freedom must be estimated because the two variances are
+not assumed equal. The **Welch-Satterthwaite equation** gives the effective
+degrees of freedom:
 
-* There are enough data for calculating the CIs,
-* Each adjacent CI pair is either non-overlap or their *p*-value of
-  the null hypothesis (A=B) is less than the predefined threshold
-  (usually 0.01),
-* Every CI is tighter than the required width (this step is optional
-  but recommended because a narrower CI makes it easier to compare
-  with new results in the future).
+.. math::
 
-Pilot needs to decide the work amount for running each round of the workload. The value has to be chosen in such a way that we can minimize the number of rounds needed to reduce the impact of the overhead of starting a round.
+   \nu = \left\lfloor
+     \frac{\left( \dfrac{\sigma_A^2}{n_A} + \dfrac{\sigma_B^2}{n_B} \right)^2}
+          {\dfrac{\sigma_A^4}{n_A^2 (n_A - 1)} + \dfrac{\sigma_B^4}{n_B^2 (n_B - 1)}}
+   \right\rfloor.
+
+:math:`\nu` lies between :math:`\min(n_A, n_B) - 1` and
+:math:`n_A + n_B - 2`. When both variances are equal it reduces to the
+pooled degrees of freedom of the standard two-sample *t*-test.
+
+The two-tailed *p*-value is then
+
+.. math::
+
+   p = 2 \cdot F(t,\, \nu),
+
+where :math:`F(t, \nu)` is the cumulative distribution function of the
+*t*-distribution with :math:`\nu` degrees of freedom evaluated at :math:`t`.
+Multiplying by 2 accounts for the fact that we care about differences in
+either direction (A > B or A < B). A *p*-value below the threshold (typically
+0.01) is taken as evidence that A and B differ significantly.
+
+Pilot also uses the first equation to compute the optimal subsession sample
+size needed to achieve a target CI width — collecting just enough data to
+make a reliable comparison.
+
+Stopping Criterion
+------------------
+
+The comparison algorithm runs until all of the following conditions are met:
+
+1. There are enough samples to calculate CIs for all workloads.
+2. Each adjacent pair of CIs is either non-overlapping, or its *p*-value
+   for the null hypothesis (:math:`\mu_A = \mu_B`) is below the threshold
+   (default 0.01).
+3. *(Optional but recommended)* Every CI is narrower than the required
+   width. A tighter CI makes it easier to compare these results against new
+   measurements in the future.
+
+Choosing Work Amounts
+---------------------
+
+To minimize the number of rounds needed, Pilot chooses each round's work
+amount so that round-start overhead is amortized over as much stable-phase
+work as possible. Longer rounds reduce the fraction of time spent on startup
+overhead and increase the number of samples per unit of wall-clock time.
 
 .. [welch:biometrika47] B. L. Welch. The generalization of Student's
                         problem when several different population
                         variances are involved. *Biometrika*,
-                        34(1-2):28–35, 1947.
+                        34(1–2):28–35, 1947.
