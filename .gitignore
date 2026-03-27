@@ -6,3 +6,4 @@ build
 cmake*
 CTestConfig.cmake
 release
+compile_commands.json
