@@ -343,7 +343,8 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
         float autocorrelation_coefficient_limit, nanosecond_type duration_threshold,
         double *wps_alpha, double *wps_v,
         double *wps_v_ci, double *ssr_out = NULL, double *ssr_percent_out = NULL,
-        size_t *subsession_sample_size = NULL, size_t *out_q = NULL) {
+        size_t *subsession_sample_size = NULL, size_t *out_q = NULL,
+        double confidence_level = 0.95) {
     // first we create copies of round_work_amounts and round_durations with
     // rounds that are shorter than round_durations filtered out
     std::vector<size_t> round_work_amounts;
@@ -427,9 +428,13 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
 
     double sigma_sqr = sub_session_ssr / (h - 2);
     double wa_mean = pilot_subsession_mean(round_work_amounts.begin(), round_work_amounts.size(), ARITHMETIC_MEAN);
-    double sum_var = pilot_subsession_var(round_work_amounts.begin(), round_work_amounts.size(), q, wa_mean, ARITHMETIC_MEAN) * (rounds -1);
+    // S_xx = sum of (subsession_mean_i - overall_mean)^2 = var * (h-1); use h-1, not rounds-1
+    double sum_var = pilot_subsession_var(round_work_amounts.begin(), round_work_amounts.size(), q, wa_mean, ARITHMETIC_MEAN) * (h - 1);
     double std_err_v = sqrt(sigma_sqr / sum_var);
-    double inv_v_ci = 2 * std_err_v;
+    // t* critical value for two-sided CI with h-2 degrees of freedom
+    boost::math::students_t t_dist(h - 2);
+    double t_star = boost::math::quantile(boost::math::complement(t_dist, (1.0 - confidence_level) / 2));
+    double inv_v_ci = t_star * std_err_v;
     // inv_v - inv_v_ci might be negative so we have to use abs() here
     *wps_v_ci = std::abs( 1.0 / (wps_inv_v - inv_v_ci) - 1.0 / (wps_inv_v + inv_v_ci) );
     debug_log << __func__ << "(): result wps_alpha " << *wps_alpha << ", wps_v " << *wps_v << ", wps_v_ci " << *wps_v_ci;

@@ -604,7 +604,8 @@ DLL_PUBLIC int pilot_wps_warmup_removal_lr_method_p(size_t rounds, const size_t 
         nanosecond_type duration_threshold,
         double *alpha, double *v,
         double *ci_width, double *ssr_out DEFAULT_VALUE(NULL), double *ssr_out_percent DEFAULT_VALUE(NULL),
-        size_t *subsession_sample_size DEFAULT_VALUE(NULL)) NOEXCEPT;
+        size_t *subsession_sample_size DEFAULT_VALUE(NULL),
+        double confidence_level DEFAULT_VALUE(0.95)) NOEXCEPT;
 
 /**
  * \brief Basic and statistics information of a workload round

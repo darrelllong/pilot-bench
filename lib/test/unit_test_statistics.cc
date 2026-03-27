@@ -139,7 +139,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression1) {
     ASSERT_NEAR(exp_ssr, ssr, 10);
     ASSERT_NEAR(44, alpha, 4);
     ASSERT_NEAR(exp_v, v, 0.1);
-    ASSERT_NEAR(0.1803, v_ci, 0.01);
+    ASSERT_NEAR(0.3016, v_ci, 0.01);
 }
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression2) {
@@ -186,7 +186,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression3) {
     ASSERT_NEAR(0.2059332, ssr, 0.001);
     ASSERT_NEAR(2.0296, alpha, .0001);
     ASSERT_NEAR(ONE_SECOND / 6.7485, v, 10000);
-    ASSERT_NEAR(15068212467, v_ci, 1);
+    ASSERT_NEAR(178441309, v_ci, 1);
 }
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression4) {
@@ -202,7 +202,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression4) {
     ASSERT_NEAR(0.59193307, ssr, 0.000001);
     ASSERT_NEAR(2694596476 / ONE_SECOND, alpha, 1);
     ASSERT_NEAR(172572240, v, 1);
-    ASSERT_NEAR(114550295, v_ci, 1);
+    ASSERT_NEAR(141053262, v_ci, 1);
 }
 
 TEST(StatisticsUnitTest, TestOfSignificance) {

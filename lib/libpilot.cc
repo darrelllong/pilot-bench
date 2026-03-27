@@ -1243,13 +1243,15 @@ int pilot_wps_warmup_removal_lr_method_p(size_t rounds, const size_t *round_work
         const nanosecond_type *round_durations,
         float autocorrelation_coefficient_limit, nanosecond_type duration_threshold,
         double *alpha, double *v,
-        double *ci_width, double *ssr_out, double *ssr_out_percent, size_t *subsession_sample_size) noexcept {
+        double *ci_width, double *ssr_out, double *ssr_out_percent, size_t *subsession_sample_size,
+        double confidence_level) noexcept {
     return pilot_wps_warmup_removal_lr_method(rounds, round_work_amounts,
                                               round_durations,
                                               autocorrelation_coefficient_limit,
                                               duration_threshold,
                                               alpha, v, ci_width, ssr_out, ssr_out_percent,
-                                              subsession_sample_size);
+                                              subsession_sample_size, nullptr,
+                                              confidence_level);
 }
 
 int pilot_warm_up_removal_detect(const pilot_workload_t *wl,

@@ -172,9 +172,13 @@ int handle_detect_changepoint_edm(int argc, const char** argv) {
         debug_log << "read " << data.back() << endl;
     }
     debug_log << "Finished loading CSV file";
-    int *changepoints;
-    size_t cp_n;
-    pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n, percent, 30);
+    int *changepoints = nullptr;
+    size_t cp_n = 0;
+    int rc = pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n, percent, 30);
+    if (rc != 0) {
+        cerr << "Error: pilot_changepoint_detection failed with code " << rc << endl;
+        return 4;
+    }
     for (size_t i = 0; i != cp_n; ++i) {
         if (0 != i) cout << ",";
         cout << changepoints[i];
