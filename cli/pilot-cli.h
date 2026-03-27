@@ -90,8 +90,8 @@ std::vector<ResultType> extract_csv_fields(const std::string &csvstr,
     vector<string> pidata_strs;
     // must have \r here to support files generated on Windows
     boost::split(pidata_strs, csvstr, boost::is_any_of(" \r\n\t,"));
-    vector<ResultType> r(pidata_strs.size());
-    for (int i = 0; i < (int)columns.size(); ++i) {
+    vector<ResultType> r(columns.size());
+    for (size_t i = 0; i < columns.size(); ++i) {
         int col = columns[i];
         if (col >= static_cast<int>(pidata_strs.size())) {
             throw runtime_error("Malformed line");

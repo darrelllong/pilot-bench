@@ -112,12 +112,12 @@ private:
     double har_sum;
 };
 
-inline accumulator_base* accumulator_factory(pilot_mean_method_t mean_method) {
+inline std::unique_ptr<accumulator_base> accumulator_factory(pilot_mean_method_t mean_method) {
     switch (mean_method) {
     case ARITHMETIC_MEAN:
-        return new arithmetic_mean_accumulator();
+        return std::unique_ptr<accumulator_base>(new arithmetic_mean_accumulator());
     case HARMONIC_MEAN:
-        return new harmonic_mean_accumulator();
+        return std::unique_ptr<accumulator_base>(new harmonic_mean_accumulator());
     }
     abort();
 }
@@ -144,13 +144,13 @@ double pilot_subsession_auto_cov(InputIterator first, size_t n, size_t q, double
     }
 
     double uae, ube;
-    std::unique_ptr<accumulator_base> ua_acc(accumulator_factory(mean_method));
+    auto ua_acc = accumulator_factory(mean_method);
     for (size_t a = 0; a < q; ++a)
         (*ua_acc)(*first++);
     uae = ua_acc->result() - sample_mean;
 
     for (size_t i = 1; i < h; ++i) {
-        std::unique_ptr<accumulator_base> ub_acc(accumulator_factory(mean_method));
+        auto ub_acc = accumulator_factory(mean_method);
         for (size_t b = 0; b < q; ++b)
             (*ub_acc)(*first++);
         ube = ub_acc->result() - sample_mean;
@@ -167,7 +167,7 @@ double pilot_subsession_var(InputIterator first, size_t n, size_t q,
     double s = 0;
     size_t h = n/q;  // subsession sample size
     for (size_t i = 0; i < h; ++i) {
-        std::unique_ptr<accumulator_base> acc(accumulator_factory(mean_method));
+        auto acc = accumulator_factory(mean_method);
         for (size_t j = 0; j < q; ++j)
             (*acc)(*first++);
 
@@ -196,7 +196,7 @@ double pilot_subsession_autocorrelation_coefficient(InputIterator first,
 
 template <typename InputIterator>
 double pilot_subsession_mean(InputIterator first, size_t n, pilot_mean_method_t mean_method) {
-    std::unique_ptr<accumulator_base> acc(accumulator_factory(mean_method));
+    auto acc = accumulator_factory(mean_method);
     while (n-- != 0)
         (*acc)(*first++);
     return acc->result();
@@ -386,7 +386,7 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
     size_t subsession_sum_wa = 0;
     nanosecond_type subsession_sum_dur = 0;
     // convert input into subsession data by grouping every q samples
-    for (size_t i = 0; i < rounds; ++i) {
+    for (size_t i = 0; i < round_work_amounts.size(); ++i) {
         subsession_sum_wa  += round_work_amounts[i];
         subsession_sum_dur += round_durations[i];
         if (i % size_t(q) == size_t(q) - 1) {

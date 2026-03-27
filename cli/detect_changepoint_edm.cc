@@ -67,10 +67,6 @@
 
 namespace po = boost::program_options;
 using boost::format;
-using boost::lexical_cast;
-using boost::replace_all;
-using boost::timer::cpu_timer;
-using boost::timer::nanosecond_type;
 using namespace std;
 using namespace pilot;
 
@@ -178,7 +174,7 @@ int handle_detect_changepoint_edm(int argc, const char** argv) {
     debug_log << "Finished loading CSV file";
     int *changepoints;
     size_t cp_n;
-    pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n, 30, percent);
+    pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n, percent, 30);
     for (size_t i = 0; i != cp_n; ++i) {
         if (0 != i) cout << ",";
         cout << changepoints[i];

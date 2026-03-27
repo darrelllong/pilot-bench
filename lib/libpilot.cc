@@ -789,9 +789,10 @@ void pilot_set_log_level(pilot_log_level_t log_level) noexcept {
 
 const char* pilot_get_last_log_lines(size_t n) noexcept {
     const string s = sstream_get_last_lines(g_in_mem_log_buffer, n);
-    char *r = (char*)malloc(s.size());
+    char *r = (char*)malloc(s.size() + 1);
     if (!r) abort();
     memcpy(r, s.data(), s.size());
+    r[s.size()] = '\0';
     return r;
 }
 
@@ -940,11 +941,19 @@ void pilot_analytical_result_t::_copyfrom(const pilot_analytical_result_t &a) {
 }
 
 pilot_analytical_result_t::pilot_analytical_result_t() {
+    // All members are POD types; memset is safe here despite the user-defined
+    // constructor. Suppress the diagnostic to avoid a C++20-era false positive.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnontrivial-memcall"
     memset(this, 0, sizeof(*this));
+#pragma clang diagnostic pop
 }
 
 pilot_analytical_result_t::pilot_analytical_result_t(const pilot_analytical_result_t &a) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnontrivial-memcall"
     memset(this, 0, sizeof(*this));
+#pragma clang diagnostic pop
     _copyfrom(a);
 }
 

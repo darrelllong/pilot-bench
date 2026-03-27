@@ -41,7 +41,7 @@ const size_t max_len = 1024 * 1024 * 1024;
 char buf[max_len];
 // We use global variables to store the result so the compiler would not
 // optimize them away.
-int hash1, hash2;
+volatile int hash1, hash2;
 
 int hash_func_one(void) {
     hash1 = 1;

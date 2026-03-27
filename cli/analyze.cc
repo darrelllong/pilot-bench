@@ -67,10 +67,6 @@
 
 namespace po = boost::program_options;
 using boost::format;
-using boost::lexical_cast;
-using boost::replace_all;
-using boost::timer::cpu_timer;
-using boost::timer::nanosecond_type;
 using namespace std;
 using namespace pilot;
 
@@ -264,19 +260,17 @@ int handle_analyze(int argc, const char** argv) {
                 line.resize(line.size()-1);
             }
             try {
-                try {
-                    data.push_back(extract_csv_fields<double>(line, fields)[0]);
-                    debug_log << format("Read line %1%. Data: \"%2%\"") % lineno % data.back();
+                data.push_back(extract_csv_fields<double>(line, fields)[0]);
+                debug_log << format("Read line %1%. Data: \"%2%\"") % lineno % data.back();
+                ++lineno;
+            } catch (const boost::bad_lexical_cast &e) {
+                if (1 == lineno && -1 == ignore_lines) {
+                    warning_log << "Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: \"" << line << '"';
                     ++lineno;
-                } catch (const boost::bad_lexical_cast &e) {
-                    if (1 == lineno && -1 == ignore_lines) {
-                        warning_log << "Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: \"" << line << '"';
-                        ++lineno;
-                        continue;
-                    } else {
-                        throw runtime_error("Malformed data");
-                    }
+                    continue;
                 }
+                fatal_log << format("Failed to extract a float number from from field %1% in line %2%, malformed data? Aborting. Line data: \"%3%\"") % field % lineno % line;
+                return 6;
             } catch (const runtime_error& e) {
                 fatal_log << format("Failed to extract a float number from from field %1% in line %2%, malformed data? Aborting. Line data: \"%3%\"") % field % lineno % line;
                 return 6;

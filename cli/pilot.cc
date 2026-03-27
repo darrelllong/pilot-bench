@@ -80,12 +80,15 @@ void print_help_msg(const char* argv0) {
 int main(int argc, const char** argv) {
     PILOT_LIB_SELF_CHECK;
 
-    // Parsing the command line arguments. First we check if a command is available.
-    if (1 >= argc) {
+    if (argc < 2) {
 #ifdef WITH_LUA
         // entering Lua mode if no command
         cerr << GREETING_MSG << endl;
         lua_State *L = luaL_newstate();
+        if (!L) {
+            cerr << "Error: failed to create Lua state" << endl;
+            return 1;
+        }
         luaL_openlibs(L);               /* opens Lua basic library */
         luap_enter(L);
         return 0;

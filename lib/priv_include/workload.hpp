@@ -480,10 +480,6 @@ struct pilot_pi_unit_readings_iter_t {
         cur_unit_reading_id_(a.cur_unit_reading_id_) {}
 
     inline double operator*() const {
-        assert (piid_ >= 0);
-        assert (cur_round_id_ >= 0);
-        assert (cur_unit_reading_id_ >= 0);
-
         if (piid_ >= wl_->num_of_pi_) {
             fatal_log << "pi_unit_readings_iter has invalid piid";
             abort();

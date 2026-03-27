@@ -85,13 +85,13 @@
 #endif
 
 #define SHOULD_NOT_REACH_HERE { fatal_log << __func__ << "():" << stringify(__LINE__) \
-    << " Error: shouldn't reach here"; }
+    << " Error: shouldn't reach here"; abort(); }
 
 namespace pilot {
 
 // all consts go here, they should be named either k_something, or ALL_UPPERCASE
-boost::timer::nanosecond_type const ONE_SECOND = 1000000000LL;
-size_t const MEGABYTE = 1024*1024;
+constexpr boost::timer::nanosecond_type ONE_SECOND = 1000000000LL;
+constexpr size_t MEGABYTE = 1024*1024;
 
 inline void die_if (bool condition, int error_code = 1, const char *error_msg = NULL) {
     if (!condition) return;

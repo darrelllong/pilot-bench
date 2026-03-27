@@ -68,7 +68,6 @@
 #include <string>
 #include <sys/types.h>   // for kill()
 #include <sys/wait.h>    // for waitpid()
-#include <signal.h>      // for kill()
 #include <unistd.h>
 #include <vector>
 
@@ -76,7 +75,6 @@ namespace po = boost::program_options;
 using boost::format;
 using boost::lexical_cast;
 using boost::replace_all;
-using boost::timer::cpu_timer;
 using boost::timer::nanosecond_type;
 using namespace boost::filesystem;
 using namespace std;
@@ -116,8 +114,13 @@ static pid_t popen2(char * const*command, FILE **infp, FILE **outfp)
     int p_stdin[2], p_stdout[2];
     pid_t pid;
 
-    if (pipe(p_stdin) != 0 || pipe(p_stdout) != 0)
+    if (pipe(p_stdin) != 0)
         throw runtime_error("Failed to create pipes");
+    if (pipe(p_stdout) != 0) {
+        close(p_stdin[0]);
+        close(p_stdin[1]);
+        throw runtime_error("Failed to create pipes");
+    }
 
     pid = fork();
 
@@ -166,7 +169,7 @@ static int pclose2(pid_t pid) {
  * @param stdout the stdout of the client program
  * @return one line of the stdout from running the cmd
  */
-string exec(char* const* cmd) {
+string read_client_output(char* const* cmd) {
     char buffer[128];
     clearerr(stdin);
     string result;
@@ -265,13 +268,13 @@ int workload_func(const pilot_workload_t *wl,
     for (const char* p : my_cmd) {
         if (!p) break;
         ss << " ";
-        ss << *p;
+        ss << p;
     }
     debug_log << ss.str();
 
     string prog_stdout;
     try {
-        prog_stdout = exec((char* const*)my_cmd.data());
+        prog_stdout = read_client_output((char* const*)my_cmd.data());
     } catch (const runtime_error& e) {
         error_log << e.what();
         _free_argv_vector(my_cmd);
@@ -645,7 +648,7 @@ int handle_run_program(int argc, const char** argv) {
         }
 
     }
-    int wl_res;
+    int wl_res = 0;
     if (use_tui)
         pilot_run_workload_tui(g_wl.get());
     else {
