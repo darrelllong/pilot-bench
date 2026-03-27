@@ -107,7 +107,7 @@ TEST(PilotUnitReadingsIterTest, ImportingAndIterating) {
 
     pilot_workload_t *wl = pilot_new_workload("Test Importing and Iterating");
     pilot_set_work_amount_limit(wl, 4200);
-    pilot_set_num_of_pi(wl, 1);
+    pilot_set_num_of_pi(wl, num_of_pi);
     // remove the first one tenth of unit readings
     pilot_set_warm_up_removal_method(wl, FIXED_PERCENTAGE);
     // disable short round detection

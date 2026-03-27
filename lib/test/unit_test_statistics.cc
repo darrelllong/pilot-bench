@@ -130,7 +130,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression1) {
     for (size_t c : work_amount) {
         t.push_back(ONE_SECOND * ((1.0 / exp_v) * c + exp_alpha + *(p_error++)));
     }
-    double alpha, v, v_ci, ssr;
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
     pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
         work_amount.data(), t.data(),
         1,  // autocorrelation_coefficient_limit
@@ -161,7 +161,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression2) {
     }
     of.close();
 
-    double alpha, v, v_ci, ssr;
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
     pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
         work_amount.data(), round_duration.data(),
         1,  // autocorrelation_coefficient_limit
@@ -177,7 +177,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression3) {
     // Real data test A
     const vector<size_t> work_amount{429497000, 472446000, 515396000, 558346000};
     const vector<nanosecond_type> round_duration{4681140000, 5526190000, 5632120000, 5611980000};
-    double alpha, v, v_ci, ssr;
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
     pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
         work_amount.data(), round_duration.data(),
         1,  // autocorrelation_coefficient_limit
@@ -193,7 +193,7 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression4) {
     // Real data test B
     const vector<size_t> work_amount{429496729, 472446392, 515396064, 558345736, 601295408, 644245080, 687194752, 730144424, 773094096};
     const vector<nanosecond_type> round_duration{5731883327, 5235129386, 5321265550, 5860121124, 6040418744, 6513983890, 6623204911, 6828709974, 7455453108};
-    double alpha, v, v_ci, ssr;
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
     pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
         work_amount.data(), round_duration.data(),
         1,  // autocorrelation_coefficient_limit
@@ -211,7 +211,7 @@ TEST(StatisticsUnitTest, TestOfSignificance) {
     double mean_female = 98.394;
     double var_male = pow(0.699, 2);
     double var_female = pow(0.743, 2);
-    double ci_left, ci_right;
+    double ci_left = 0.0, ci_right = 0.0;
     size_t sample_size_male = 65;
     size_t sample_size_female = 65;
     double p = pilot_p_eq(mean_male, mean_female,
@@ -247,7 +247,7 @@ TEST(StatisticsUnitTest, TestSpeedOfLight) {
     ASSERT_NEAR(pow(79.0105478191, 2), var1, 0.0001);
     ASSERT_NEAR(pow(107.114618526, 2), var2, 0.0001);
     ASSERT_NEAR(27.754, pilot_calc_deg_of_freedom(var1, var2, vel1.size(), vel2.size()), 0.001);
-    double ci_left, ci_right;
+    double ci_left = 0.0, ci_right = 0.0;
     ASSERT_NEAR(0.0003625357,
                 pilot_p_eq(mean1, mean2, vel1.size(), vel2.size(), var1, var2, &ci_left, &ci_right, 0.99),
                 0.0000000001);

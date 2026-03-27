@@ -58,14 +58,14 @@ char *g_test_data_file;
 
 TEST(PilotUnitCompareResults, LoadBaselineFromFile) {
     pilot_workload_t *wl = pilot_new_workload("Test compare results");
-    double bl_mean, bl_var;
-    size_t bl_sample_size;
+    double bl_mean = 0.0, bl_var = 0.0;
+    size_t bl_sample_size = 0;
     ASSERT_EQ(ERR_NOT_INIT, pilot_get_baseline(wl, 0, READING_TYPE, &bl_mean, &bl_sample_size, &bl_var));
     ASSERT_EQ(ERR_NOT_INIT, pilot_get_baseline(wl, 0, UNIT_READING_TYPE, &bl_mean, &bl_sample_size, &bl_var));
 
     ASSERT_EQ(0, pilot_load_baseline_file(wl, g_test_data_file));
     // check that the num_of_pi is set correctly
-    size_t num_of_pi;
+    size_t num_of_pi = 0;
     ASSERT_EQ(0, pilot_get_num_of_pi(wl, &num_of_pi));
     ASSERT_EQ(5, num_of_pi);
     // PI 0 has both readings and unit readings

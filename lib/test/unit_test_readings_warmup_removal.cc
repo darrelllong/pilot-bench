@@ -126,7 +126,7 @@ TEST(WarmUpRemoval, ReadingsWithFixedSetupAndWarmupDurationIdenticalDiffWorkAmou
     // effect of cache. During cool-down phase, v lowers to 0.5v.
     prepare_data(work_amounts, setup_durations, warmup_durations,
                  cooldown_durations, 3*v, v, 0.5*v, total_durations);
-    double calc_alpha, calc_v, calc_ci_width;
+    double calc_alpha = 0.0, calc_v = 0.0, calc_ci_width = 0.0;
     ASSERT_EQ(0,
               pilot_wps_warmup_removal_lr_method_p(work_amounts.size(), work_amounts.data(),
                                               total_durations.data(), 1, 0,
@@ -150,7 +150,7 @@ TEST(WarmUpRemoval, ReadingsWithFixedSetupAndWarmupDurationChangingDiffWorkAmoun
     // effect of cache. During cool-down phase, v lowers to 0.5v.
     prepare_data(work_amounts, setup_durations, warmup_durations,
                  cooldown_durations, 3*v, v, 0.5*v, total_durations);
-    double calc_alpha, calc_v, calc_ci_width;
+    double calc_alpha = 0.0, calc_v = 0.0, calc_ci_width = 0.0;
     pilot_wps_warmup_removal_lr_method_p(work_amounts.size(), work_amounts.data(),
                                     total_durations.data(), 1, 0,
                                     &calc_alpha, &calc_v, &calc_ci_width);
