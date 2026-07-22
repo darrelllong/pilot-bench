@@ -4,6 +4,10 @@
 .settings
 build
 cmake*
+# ...but the in-source cmake/ directory holds tracked build scripts
+# (out-of-source artifacts live under build/), so keep it.
+!cmake/
+!cmake/**
 CTestConfig.cmake
 release
 compile_commands.json
