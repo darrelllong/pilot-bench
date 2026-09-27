@@ -139,6 +139,10 @@ ssize_t pilot_workload_t::required_num_of_unit_readings_for_comparison(int piid)
         info_log << __func__ << "(): cannot calculate sample size for eq test";
         return -abs(res);
     }
+    if (opt_sample_size > static_cast<size_t>(std::numeric_limits<ssize_t>::max()) / q) {
+        info_log << __func__ << "(): optimal sample size for eq test is out of range";
+        return -ERR_NOT_ENOUGH_DATA;
+    }
     if (opt_sample_size < min_sample_size_) {
         info_log << __func__ << "(): optimal sample size for eq test ("
                  << opt_sample_size << ") is smaller than the sample size lower threshold ("
@@ -525,7 +529,11 @@ char* pilot_workload_t::text_workload_summary(void) const {
     if (analytical_result_.wps_has_data) {
         s << "WPS alpha: " << analytical_result_.wps_alpha << endl;
         s << "WPS v: " << analytical_result_.wps_v_formatted << endl;
-        s << "WPS v CI: " << analytical_result_.wps_v_ci_formatted << endl;
+        if (analytical_result_.wps_v_ci >= 0) {
+            s << "WPS v CI: " << analytical_result_.wps_v_ci_formatted << endl;
+        } else {
+            s << "Not enough data for WPS v CI" << endl;
+        }
         s << "WPS err: " << analytical_result_.wps_err << " (" << analytical_result_.wps_err_percent << "%)" << endl;
     } else {
         s << "Not enough data for WPS analysis" << endl;
@@ -579,15 +587,21 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
     analytical_result_.wps_naive_v_err_percent = sqrt(analytical_result_.wps_naive_v_err) / sum_of_round_durations;
 
     // the WPS linear regression method
-    nanosecond_type duration_threshold;
+    //
+    // Rounds that are not longer than duration_threshold are left out of the
+    // regression. The threshold starts from the short round detection
+    // threshold. When alpha is negative, rounds shorter than -alpha are left
+    // out too and the regression is done again, until the threshold stops
+    // changing. wps_alpha is in seconds and the threshold is in nanoseconds.
+    //
+    // The threshold never decreases, so each regression uses a subset of the
+    // rounds of the one before it. If the subset is the same, alpha is the
+    // same and the loop ends. So the loop ends after at most rounds_
+    // regressions.
+    nanosecond_type duration_threshold = short_round_detection_threshold_;
     int r = 0;
-    do {
-        if (analytical_result_.wps_has_data) {
-            duration_threshold = analytical_result_.wps_alpha < 0? nanosecond_type(-analytical_result_.wps_alpha) : 0;
-        } else {
-            duration_threshold = short_round_detection_threshold_;
-        }
-        debug_log << __func__ << "(): round " << r << " WPS regression (duration_threshold = " << duration_threshold << ")";
+    while (true) {
+        debug_log << __func__ << "(): round " << r++ << " WPS regression (duration_threshold = " << duration_threshold << ")";
         int res = pilot_wps_warmup_removal_lr_method(round_work_amounts_.size(),
                                                      round_work_amounts_.begin(),
                                                      round_durations_.begin(),
@@ -608,23 +622,46 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
             analytical_result_.wps_v = -1;
             analytical_result_.wps_v_ci = -1;
             return;
-        } else if (analytical_result_.wps_v < 0) {
-            debug_log << "Calculated wps_v < 0, needs more rounds (duration_threshold = " << duration_threshold << ")";
+        }
+        if (!(analytical_result_.wps_v > 0)) {
+            debug_log << "Calculated wps_v <= 0, needs more rounds (duration_threshold = " << duration_threshold << ")";
             analytical_result_.wps_has_data = false;
             analytical_result_.wps_alpha = -1;
             analytical_result_.wps_v = -1;
             analytical_result_.wps_v_ci = -1;
             return;
+        }
+
+        if (analytical_result_.wps_alpha < 0) {
+            double alpha_threshold = -analytical_result_.wps_alpha * ONE_SECOND;
+            if (alpha_threshold >= static_cast<double>(std::numeric_limits<nanosecond_type>::max())) {
+                debug_log << "WPS alpha " << analytical_result_.wps_alpha << " is out of range, needs more rounds";
+                analytical_result_.wps_has_data = false;
+                analytical_result_.wps_alpha = -1;
+                analytical_result_.wps_v = -1;
+                analytical_result_.wps_v_ci = -1;
+                return;
+            }
+            if (static_cast<nanosecond_type>(alpha_threshold) > duration_threshold) {
+                duration_threshold = static_cast<nanosecond_type>(alpha_threshold);
+                continue;
+            }
+        }
+
+        analytical_result_.wps_has_data = true;
+        analytical_result_.wps_v_formatted = format_wps(analytical_result_.wps_v);
+        if (ERR_NOT_ENOUGH_DATA_FOR_CI == res) {
+            // v is valid but the data do not give it an upper bound yet
+            debug_log << "Not enough data for calculating the CI of WPS v";
+            analytical_result_.wps_v_ci = -1;
+            analytical_result_.wps_v_ci_formatted = -1;
         } else {
-            analytical_result_.wps_has_data = true;
-            analytical_result_.wps_v_formatted = format_wps(analytical_result_.wps_v);
             double v_ci_low  = format_wps(analytical_result_.wps_v - analytical_result_.wps_v_ci / 2);
             double v_ci_high = format_wps(analytical_result_.wps_v + analytical_result_.wps_v_ci / 2);
             analytical_result_.wps_v_ci_formatted = abs(v_ci_high - v_ci_low);
         }
-    } while (analytical_result_.wps_has_data &&
-             analytical_result_.wps_alpha < 0 &&
-             duration_threshold != static_cast<nanosecond_type>(-analytical_result_.wps_alpha));
+        return;
+    }
 }
 
 size_t pilot_workload_t::set_session_desired_duration(size_t sec) {

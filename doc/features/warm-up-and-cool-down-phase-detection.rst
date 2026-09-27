@@ -164,7 +164,41 @@ regression <https://en.wikipedia.org/wiki/Least_squares>`_. To compute a
 valid CI for :math:`v_{\text{stable}}` using the *t*-distribution, the
 :math:`(w, t)` samples must be i.i.d. Pilot applies subsession analysis to
 ensure this before running the regression (see
-:doc:`autocorrelation-detection-and-mitigation`).
+:doc:`autocorrelation-detection-and-mitigation`). A subsession sample is the
+mean work amount and the mean duration of :math:`q` consecutive rounds. The
+mean is used rather than the sum because the sum of :math:`q` rounds has an
+intercept of :math:`q\alpha`.
+
+The regression needs at least three subsession samples, and their work
+amounts must not all be the same, because the slope is not defined when they
+are. Pilot reports that there is not enough data in both cases.
+
+The Confidence Interval of the Rate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let :math:`\hat{\beta}` be the estimated slope, so that
+:math:`\hat{v} = 1/\hat{\beta}`. With :math:`h` subsession samples the CI of
+the slope is :math:`\hat{\beta} \pm \delta`, where
+
+.. math::
+
+   \delta = t^*_{h-2} \sqrt{\frac{\hat{\sigma}^2}{\sum_j (w_j - \overline{w})^2}},
+   \qquad
+   \hat{\sigma}^2 = \frac{1}{h-2} \sum_j \left(t_j - \hat{\alpha} - \hat{\beta} w_j\right)^2.
+
+The CI of :math:`v_{\text{stable}}` comes from inverting the two ends:
+
+.. math::
+
+   \frac{1}{\hat{\beta} + \delta} \le v_{\text{stable}} \le \frac{1}{\hat{\beta} - \delta}.
+
+It is not symmetric about :math:`\hat{v}`, and it exists only when
+:math:`\hat{\beta} - \delta > 0`. When the CI of the slope contains zero the
+data give :math:`v_{\text{stable}}` a lower bound but no upper bound. Pilot
+then reports :math:`\hat{v}` without a CI
+(``pilot_wps_warmup_removal_lr_method_p()`` returns
+``ERR_NOT_ENOUGH_DATA_FOR_CI`` and sets the CI width to infinity). If the
+WPS CI is required (``--wps``), the session goes on to run more rounds.
 
 Choosing Work Amounts
 ~~~~~~~~~~~~~~~~~~~~~
@@ -199,8 +233,9 @@ Handling Short Rounds
 If :math:`a = 0`, some early rounds may be too short to be meaningful
 because they are dominated by non-stable overhead rather than stable-phase
 work. Pilot measures the duration of each completed round. If a round is
-shorter than a preset lower bound (typically 1 second), it is recorded but
-excluded from analysis. Pilot then doubles the work amount of that round
+shorter than the short round detection threshold (3, 10, or 20 seconds,
+depending on the preset), it is recorded but excluded from every WPS
+regression. Pilot then doubles the work amount of that round
 and retries until the round is long enough, and updates :math:`a` to that
 new minimum work amount.
 
@@ -233,18 +268,42 @@ should exceed 50 so that the central limit theorem applies [chen:hpca12]_.
 Tracking the Intercept
 ~~~~~~~~~~~~~~~~~~~~~~
 
-One additional complication: the midpoint bisection may produce work amounts
-smaller than :math:`\alpha` (the total non-stable work), in which case the
-stable phase is absent from the round and the linear model does not apply.
-Pilot tracks the estimated :math:`\alpha` after each round. Any round whose
-work amount is less than the current estimate of :math:`\alpha` is excluded
-from analysis, and :math:`a` is updated to the current :math:`\alpha`.
+One additional complication: a round may end before the stable phase begins,
+in which case the linear model does not apply to it. With the WPS method
+Pilot cannot see the phases of a round, so it uses the estimated intercept.
+
+When the estimate of :math:`\alpha` is negative, Pilot excludes the rounds
+whose duration is not longer than :math:`|\alpha|` and runs the regression
+again. It repeats this until the exclusion threshold stops changing. The
+threshold starts from the short round detection threshold and never
+decreases, so each regression uses a subset of the rounds of the one before
+it, and the procedure ends after at most as many regressions as there are
+rounds. If fewer than three rounds are left, Pilot reports that there is not
+enough data. If the WPS CI is required (``--wps``), the session goes on to
+run more rounds.
+
+Rounds are excluded on account of :math:`\alpha` only while its estimate is
+negative. The rounds that an earlier regression of the same analysis
+excluded stay excluded.
+
+.. note::
+
+   This is what the library does. The paper [li:mascots16]_ describes the
+   step differently: rounds whose work amount is smaller than
+   :math:`\alpha` are removed, and :math:`a` is updated to :math:`\alpha`.
 
 .. [chen:hpca12] Tianshi Chen, Yunji Chen, Qi Guo, Olivier Temam, Yue
                  Wu, and Weiwu Hu. Statistical performance comparisons
                  of computers. In *Proceedings of the 18th
                  International Symposium on High-Performance Computer
                  Architecture (HPCA-18)*. IEEE, 2012.
+
+.. [li:mascots16] Yan Li, Yash Gupta, Ethan L. Miller, and Darrell D. E.
+                  Long. Pilot: A framework that understands how to do
+                  performance benchmarks the right way. In *Proceedings
+                  of the 24th International Symposium on Modeling,
+                  Analysis, and Simulation of Computer and
+                  Telecommunication Systems (MASCOTS 2016)*. IEEE, 2016.
 
 .. [james:stat.ME14] Nicholas A. James, Arun Kejariwal, and
                      David S. Matteson. Leveraging cloud data to

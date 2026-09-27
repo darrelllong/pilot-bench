@@ -595,8 +595,12 @@ DLL_PUBLIC double pilot_subsession_autocorrelation_coefficient_p(const double *d
  * @param[out] v the calculated performance
  * @param[out] ci_width the calculated width of the confidence interval
  * @return 0 on success; ERR_NOT_ENOUGH_DATA when there is not enough sample
- * for calculate v; ERR_NOT_ENOUGH_DATA_FOR_CI when there is enough data for
- * calculating v but not enough for calculating confidence interval.
+ * for calculate v, which includes the case that all the work amounts are the
+ * same, and the outputs are not changed in this case;
+ * ERR_NOT_ENOUGH_DATA_FOR_CI when there is enough data for
+ * calculating v but not enough for calculating confidence interval. In the
+ * latter case alpha and v are valid, and ci_width is set to infinity because
+ * the data do not give v an upper bound.
  */
 DLL_PUBLIC int pilot_wps_warmup_removal_lr_method_p(size_t rounds, const size_t *round_work_amounts,
         const nanosecond_type *round_durations,
@@ -705,7 +709,7 @@ struct pilot_analytical_result_t {
     size_t wps_optimal_subsession_size;
     double wps_err;
     double wps_err_percent;
-    double wps_v_ci;                   //! the width of the confidence interval of v
+    double wps_v_ci;                   //! the width of the confidence interval of v; -1 if there is not enough data for calculating it
     double wps_v_ci_formatted;
 
 #ifdef __cplusplus
@@ -818,7 +822,12 @@ DLL_PUBLIC double pilot_p_eq(double mean1, double mean2, size_t size1, size_t si
  * @param new_var
  * @param required_p
  * @param[out] opt_new_sample_size the optimal sample size needed for new
- * @return 0 on success; error code otherwise
+ * @return 0 on success; ERR_NOT_ENOUGH_DATA when no sample size is large
+ * enough, which happens when the means are the same or the baseline alone has
+ * more uncertainty than required_p allows; other error code otherwise. A
+ * workload that is compared with a baseline of the same mean keeps running
+ * until the session duration limit or the work amount limit is reached,
+ * because the null hypothesis cannot be rejected.
  */
 DLL_PUBLIC int pilot_optimal_sample_size_for_eq_test(double baseline_mean,
         size_t baseline_sample_size, double baseline_var,

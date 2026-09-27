@@ -53,8 +53,10 @@
 #undef NDEBUG
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include "gtest/gtest.h"
+#include <memory>
 #include "pilot/libpilot.h"
 #include <vector>
 #include "workload.hpp"
@@ -204,6 +206,135 @@ TEST(PilotRunWorkloadTest, TestCalcNextRoundWorkAmountFromWPS) {
     wl->rounds_++;
     ASSERT_TRUE(calc_next_round_work_amount_from_wps(wl, &wa));
     ASSERT_EQ(10 + wa_slice_size * 2, wa);
+    pilot_destroy_workload(wl);
+}
+
+static void add_mock_round(pilot_workload_t *wl, size_t work_amount, double duration_in_sec) {
+    wl->round_work_amounts_.push_back(work_amount);
+    wl->round_durations_.push_back(nanosecond_type(duration_in_sec * ONE_SECOND));
+    wl->rounds_++;
+}
+
+static pilot_workload_t* new_mock_wps_workload(void) {
+    pilot_workload_t *wl = pilot_new_workload("Test workload");
+    pilot_set_work_amount_limit(wl, 1000);
+    pilot_set_init_work_amount(wl, 0);
+    pilot_set_wps_analysis(wl, NULL, true, true);
+    pilot_set_autocorrelation_coefficient(wl, 1);
+    pilot_set_short_round_detection_threshold(wl, 1);
+    return wl;
+}
+
+static shared_ptr<pilot_analytical_result_t> mock_wps_analysis(pilot_workload_t *wl) {
+    // make sure the analysis is done again
+    wl->raw_data_changed_time_ = chrono::steady_clock::now();
+    return shared_ptr<pilot_analytical_result_t>(pilot_analytical_result(wl, NULL),
+                                                 pilot_free_analytical_result);
+}
+
+const vector<size_t> g_mock_wps_work_amounts{30, 300, 60, 270, 90, 240, 120, 210, 150, 180};
+
+TEST(PilotRunWorkloadTest, WPSLeavesOutShortRounds) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // Ten rounds of duration = 4 + work_amount / 1.5, and two rounds that are
+    // shorter than the short round detection threshold. A regression of all
+    // 12 rounds has alpha 1.5395 and v 1.4742.
+    const double exp_alpha = 4;
+    const double exp_v = 1.5;
+    for (size_t i = 0; i < g_mock_wps_work_amounts.size(); ++i) {
+        size_t wa = g_mock_wps_work_amounts[i];
+        add_mock_round(wl, wa, exp_alpha + wa / exp_v);
+        if (1 == i || 5 == i)
+            add_mock_round(wl, 3, 0.9);
+    }
+    // The second analysis has the result of the first one to start from. It
+    // must not let the short rounds back in.
+    for (int i = 0; i < 2; ++i) {
+        auto ar = mock_wps_analysis(wl);
+        ASSERT_TRUE(ar->wps_has_data);
+        ASSERT_EQ(10, ar->wps_subsession_sample_size);
+        ASSERT_NEAR(exp_alpha, ar->wps_alpha, 1e-6);
+        ASSERT_NEAR(exp_v, ar->wps_v, 1e-6);
+    }
+    pilot_destroy_workload(wl);
+}
+
+TEST(PilotRunWorkloadTest, WPSLeavesOutRoundsShorterThanNegativeAlpha) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // Ten rounds of duration = -5 + work_amount / 1.5, and two rounds of 3 s
+    // and 3.5 s that didn't reach the stable phase. A regression of all 12
+    // rounds has alpha -3.4316 and v 1.5168. With the two rounds left out
+    // alpha is -5.
+    const double exp_alpha = -5;
+    const double exp_v = 1.5;
+    for (size_t i = 0; i < g_mock_wps_work_amounts.size(); ++i) {
+        size_t wa = g_mock_wps_work_amounts[i];
+        add_mock_round(wl, wa, exp_alpha + wa / exp_v);
+        if (2 == i)
+            add_mock_round(wl, 6, 3);
+        if (6 == i)
+            add_mock_round(wl, 9, 3.5);
+    }
+    for (int i = 0; i < 2; ++i) {
+        auto ar = mock_wps_analysis(wl);
+        ASSERT_TRUE(ar->wps_has_data);
+        ASSERT_EQ(10, ar->wps_subsession_sample_size);
+        ASSERT_NEAR(exp_alpha, ar->wps_alpha, 1e-6);
+        ASSERT_NEAR(exp_v, ar->wps_v, 1e-6);
+    }
+    pilot_destroy_workload(wl);
+}
+
+TEST(PilotRunWorkloadTest, WPSNotEnoughRoundsLongerThanNegativeAlpha) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // Ten rounds of duration = -100 + work_amount / 1.5, which are from 10 s
+    // to 120 s. Only two of them are longer than -alpha.
+    const double exp_alpha = -100;
+    const double exp_v = 1.5;
+    for (size_t wa : {225, 330, 165, 270, 195, 240, 315, 180, 255, 210}) {
+        add_mock_round(wl, wa, exp_alpha + wa / exp_v);
+    }
+    auto ar = mock_wps_analysis(wl);
+    ASSERT_FALSE(ar->wps_has_data);
+    pilot_destroy_workload(wl);
+}
+
+TEST(PilotRunWorkloadTest, WPSPerfectFit) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // A CI width of 0 is a valid result. It is not the same as no CI (-1).
+    for (size_t wa : g_mock_wps_work_amounts) {
+        add_mock_round(wl, wa, 4 + wa / 1.5);
+    }
+    auto ar = mock_wps_analysis(wl);
+    ASSERT_TRUE(ar->wps_has_data);
+    ASSERT_GE(ar->wps_v_ci, 0);
+    ASSERT_NEAR(0, ar->wps_v_ci, 1e-6);
+    char *summary = pilot_text_workload_summary(wl);
+    ASSERT_NE(nullptr, strstr(summary, "WPS v CI: "));
+    ASSERT_EQ(nullptr, strstr(summary, "Not enough data for WPS v CI"));
+    pilot_free_text_dump(summary);
+    pilot_destroy_workload(wl);
+}
+
+TEST(PilotRunWorkloadTest, WPSNoUpperBoundOfV) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // The data of StatisticsUnitTest.OrdinaryLeastSquareLinearRegression3
+    const vector<size_t> work_amount{429497000, 472446000, 515396000, 558346000};
+    const vector<nanosecond_type> round_duration{4681140000, 5526190000, 5632120000, 5611980000};
+    pilot_set_work_amount_limit(wl, 1000000000);
+    for (size_t i = 0; i < work_amount.size(); ++i) {
+        wl->round_work_amounts_.push_back(work_amount[i]);
+        wl->round_durations_.push_back(round_duration[i]);
+        wl->rounds_++;
+    }
+    auto ar = mock_wps_analysis(wl);
+    ASSERT_TRUE(ar->wps_has_data);
+    ASSERT_NEAR(ONE_SECOND / 6.7485, ar->wps_v, 10000);
+    ASSERT_EQ(-1, ar->wps_v_ci);
+    ASSERT_EQ(-1, ar->wps_v_ci_formatted);
+    char *summary = pilot_text_workload_summary(wl);
+    ASSERT_NE(nullptr, strstr(summary, "Not enough data for WPS v CI"));
+    pilot_free_text_dump(summary);
     pilot_destroy_workload(wl);
 }
 

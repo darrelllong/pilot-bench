@@ -334,8 +334,11 @@ void simple_regression_model(const std::vector<T1> &x, const std::vector<T2> &y,
  * @param v
  * @param ci_width
  * @return 0 on success; ERR_NOT_ENOUGH_DATA when there is not enough sample
- * for calculate v; ERR_NOT_ENOUGH_DATA_FOR_CI when there is enough data for
- * calculating v but not enough for calculating confidence interval.
+ * for calculate v, which includes the case that all the work amounts are the
+ * same; ERR_NOT_ENOUGH_DATA_FOR_CI when there is enough data for
+ * calculating v but not enough for calculating confidence interval. In the
+ * latter case alpha and v are valid, and ci_width is set to infinity because
+ * the data do not give v an upper bound.
  */
 template <typename WorkAmountInputIterator, typename RoundDurationInputIterator>
 int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator round_work_amounts_raw,
@@ -400,12 +403,39 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
         }
     }
 
+    // S_xx = sum of (subsession_mean_i - mean)^2 = var * (h-1); use h-1, not
+    // rounds-1. This has to be calculated from the same samples that the
+    // regression uses.
+    double wa_mean = pilot_subsession_mean(subsession_work_amounts.begin(), subsession_work_amounts.size(), ARITHMETIC_MEAN);
+    double sum_var = pilot_subsession_var(subsession_work_amounts.begin(), subsession_work_amounts.size(), 1, wa_mean, ARITHMETIC_MEAN) * (h - 1);
+    // The slope is not defined when all the work amounts are the same. We
+    // have to compare the work amounts themselves. sum_var can't tell us
+    // because the mean of identical values may be off by a rounding error,
+    // which makes sum_var greater than 0.
+    bool same_work_amount = true;
+    for (size_t i = 1; i < subsession_work_amounts.size(); ++i) {
+        if (subsession_work_amounts[i] != subsession_work_amounts[0]) {
+            same_work_amount = false;
+            break;
+        }
+    }
+    if (same_work_amount || !(sum_var > 0)) {
+        debug_log << __func__ << "() cannot do regression because all work amounts are the same";
+        return ERR_NOT_ENOUGH_DATA;
+    }
+
     double wps_inv_v;
     {
+        double alpha_ns;
         double wpns_inv_v;     // invert v of work amount per nanosecond
-        simple_regression_model(subsession_work_amounts, subsession_round_durations, wps_alpha, &wpns_inv_v);
+        simple_regression_model(subsession_work_amounts, subsession_round_durations, &alpha_ns, &wpns_inv_v);
+        if (!std::isfinite(alpha_ns) || !std::isfinite(wpns_inv_v) || 0 == wpns_inv_v) {
+            // a slope of 0 means the duration doesn't depend on the work amount
+            debug_log << __func__ << "() cannot calculate v from slope " << wpns_inv_v;
+            return ERR_NOT_ENOUGH_DATA;
+        }
         wps_inv_v = wpns_inv_v / ONE_SECOND;
-        *wps_alpha /= ONE_SECOND;
+        *wps_alpha = alpha_ns / ONE_SECOND;
         *wps_v = ONE_SECOND / wpns_inv_v;
     }
 
@@ -429,17 +459,20 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
     if (ssr_percent_out) *ssr_percent_out = sqrt(ssr) / dur_sum;
 
     double sigma_sqr = sub_session_ssr / (h - 2);
-    // S_xx = sum of (subsession_mean_i - mean)^2 = var * (h-1); use h-1, not
-    // rounds-1. This has to be calculated from the same samples that the
-    // regression used.
-    double wa_mean = pilot_subsession_mean(subsession_work_amounts.begin(), subsession_work_amounts.size(), ARITHMETIC_MEAN);
-    double sum_var = pilot_subsession_var(subsession_work_amounts.begin(), subsession_work_amounts.size(), 1, wa_mean, ARITHMETIC_MEAN) * (h - 1);
     double std_err_v = sqrt(sigma_sqr / sum_var);
     // t* critical value for two-sided CI with h-2 degrees of freedom
     boost::math::students_t t_dist(h - 2);
     double t_star = boost::math::quantile(boost::math::complement(t_dist, (1.0 - confidence_level) / 2));
     double inv_v_ci = t_star * std_err_v;
-    // inv_v - inv_v_ci might be negative so we have to use abs() here
+    if (wps_inv_v > 0 && !(wps_inv_v - inv_v_ci > 0)) {
+        // The CI of 1/v reaches 0, so v has no upper bound. The difference of
+        // the inverted ends would be a finite number that means nothing.
+        *wps_v_ci = std::numeric_limits<double>::infinity();
+        debug_log << __func__ << "(): result wps_alpha " << *wps_alpha << ", wps_v " << *wps_v << ", wps_v has no upper bound";
+        return ERR_NOT_ENOUGH_DATA_FOR_CI;
+    }
+    // When wps_inv_v is negative the caller discards v, but we still have to
+    // use abs() here.
     *wps_v_ci = std::abs( 1.0 / (wps_inv_v - inv_v_ci) - 1.0 / (wps_inv_v + inv_v_ci) );
     debug_log << __func__ << "(): result wps_alpha " << *wps_alpha << ", wps_v " << *wps_v << ", wps_v_ci " << *wps_v_ci;
     return 0;

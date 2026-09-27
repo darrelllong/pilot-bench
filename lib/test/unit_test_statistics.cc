@@ -174,19 +174,23 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression2) {
 }
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression3) {
-    // Real data test A
+    // Real data test A. Four rounds are not enough for a CI: the 95% CI of
+    // the slope is [-7.63e-09, 2.11e-08] s per work unit, which contains 0,
+    // so v has a lower bound (47338412) but no upper bound.
     const vector<size_t> work_amount{429497000, 472446000, 515396000, 558346000};
     const vector<nanosecond_type> round_duration{4681140000, 5526190000, 5632120000, 5611980000};
     double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
-    pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+    ASSERT_EQ(ERR_NOT_ENOUGH_DATA_FOR_CI,
+              pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
         work_amount.data(), round_duration.data(),
         1,  // autocorrelation_coefficient_limit
         0,  // duration threshold
-        &alpha, &v, &v_ci, &ssr);
+        &alpha, &v, &v_ci, &ssr));
     ASSERT_NEAR(0.2059332, ssr, 0.001);
     ASSERT_NEAR(2.0296, alpha, .0001);
     ASSERT_NEAR(ONE_SECOND / 6.7485, v, 10000);
-    ASSERT_NEAR(178441309, v_ci, 1);
+    ASSERT_TRUE(std::isinf(v_ci));
+    ASSERT_GT(v_ci, 0);
 }
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression4) {
@@ -286,6 +290,56 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSubsession3) {
     ASSERT_NEAR(0.0269967, v_ci, 1e-6);
 }
 
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSameWorkAmount) {
+    // The slope is not defined when all rounds have the same work amount.
+    // The output must not be touched.
+    const vector<nanosecond_type> round_duration{
+        5731883327, 5235129386, 5321265550, 5860121124, 6040418744, 6513983890,
+        6623204911, 6828709974, 7455453108, 6123456789, 5987654321, 6234567890};
+    for (size_t wa : {size_t(0), size_t(3), size_t(429496729)}) {
+        const vector<size_t> work_amount(round_duration.size(), wa);
+        double alpha = 42, v = 42, v_ci = 42;
+        ASSERT_EQ(ERR_NOT_ENOUGH_DATA,
+                  pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+            work_amount.data(), round_duration.data(),
+            1,  // autocorrelation_coefficient_limit
+            0,  // duration threshold
+            &alpha, &v, &v_ci)) << "work amount " << wa;
+        ASSERT_EQ(42, alpha);
+        ASSERT_EQ(42, v);
+        ASSERT_EQ(42, v_ci);
+    }
+}
+
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSameLargeWorkAmount) {
+    // The sum of these work amounts is greater than 2^53, so their mean has
+    // a rounding error and the sum of the squares of the differences from
+    // the mean is not 0 even though all of them are the same.
+    const size_t rounds = 1000;
+    vector<nanosecond_type> round_duration;
+    uint32_t x = 20260927;
+    for (size_t i = 0; i < rounds; ++i) {
+        x = x * 1664525u + 1013904223u;
+        // 30 s +- 0.5 s
+        round_duration.push_back(30 * ONE_SECOND - ONE_SECOND / 2 + nanosecond_type(x % 1000000000u));
+    }
+    for (size_t wa : {size_t(132762829599805), size_t(501461895223897), size_t(992184428663883)}) {
+        for (size_t n : {size_t(100), size_t(300), size_t(1000)}) {
+            const vector<size_t> work_amount(n, wa);
+            double alpha = 42, v = 42, v_ci = 42;
+            ASSERT_EQ(ERR_NOT_ENOUGH_DATA,
+                      pilot_wps_warmup_removal_lr_method_p(n,
+                work_amount.data(), round_duration.data(),
+                1,  // autocorrelation_coefficient_limit
+                0,  // duration threshold
+                &alpha, &v, &v_ci)) << "work amount " << wa << ", rounds " << n;
+            ASSERT_EQ(42, alpha);
+            ASSERT_EQ(42, v);
+            ASSERT_EQ(42, v_ci);
+        }
+    }
+}
+
 TEST(StatisticsUnitTest, TestOfSignificance) {
     // Sample data from http://www.stat.yale.edu/Courses/1997-98/101/meancomp.htm.
     double mean_male = 98.105;
@@ -308,6 +362,51 @@ TEST(StatisticsUnitTest, TestOfSignificance) {
             sample_size_male, var_male, mean_female, sample_size_female,
             var_female, p, &opt_sample_size));
     ASSERT_EQ(sample_size_female, opt_sample_size);
+}
+
+TEST(StatisticsUnitTest, OptimalSampleSizeForEqTestRoundsUp) {
+    size_t opt_sample_size = 42;
+    // d = -1, nu = 54.0159, t = 2.004866,
+    // 4 / ((1 / 2.004866)^2 - 4 / 1000) = 16.34, which has to be rounded up
+    ASSERT_EQ(0, pilot_optimal_sample_size_for_eq_test(100, 1000, 4,
+            101, 50, 4, 0.05, &opt_sample_size));
+    ASSERT_EQ(17, opt_sample_size);
+}
+
+TEST(StatisticsUnitTest, OptimalSampleSizeForEqTestBaselineNotPreciseEnough) {
+    // The variance of the mean of the baseline is 25 / 10 = 2.5, and
+    // (d / t)^2 = (1 / 2.241338)^2 = 0.199. No sample size is large enough.
+    size_t opt_sample_size = 42;
+    ASSERT_EQ(ERR_NOT_ENOUGH_DATA, pilot_optimal_sample_size_for_eq_test(100, 10, 25,
+            101, 50, 4, 0.05, &opt_sample_size));
+    ASSERT_EQ(42, opt_sample_size);
+}
+
+TEST(StatisticsUnitTest, OptimalSampleSizeForEqTestSameMean) {
+    size_t opt_sample_size = 42;
+    ASSERT_EQ(ERR_NOT_ENOUGH_DATA, pilot_optimal_sample_size_for_eq_test(100, 1000, 4,
+            100, 50, 4, 0.05, &opt_sample_size));
+    ASSERT_EQ(42, opt_sample_size);
+}
+
+TEST(StatisticsUnitTest, TestOfSignificanceNoVariance) {
+    // The degree of freedom is 0/0 when neither sample has any variance
+    double ci_left = 42, ci_right = 42;
+    ASSERT_EQ(0, pilot_p_eq(100, 101, 10, 10, 0, 0, &ci_left, &ci_right));
+    ASSERT_EQ(-1, ci_left);
+    ASSERT_EQ(-1, ci_right);
+    ASSERT_EQ(1, pilot_p_eq(100, 100, 10, 10, 0, 0, &ci_left, &ci_right));
+    ASSERT_EQ(0, ci_left);
+    ASSERT_EQ(0, ci_right);
+
+    size_t opt_sample_size = 42;
+    ASSERT_EQ(0, pilot_optimal_sample_size_for_eq_test(100, 10, 0,
+            101, 10, 0, 0.05, &opt_sample_size));
+    ASSERT_EQ(0, opt_sample_size);
+    opt_sample_size = 42;
+    ASSERT_EQ(ERR_NOT_ENOUGH_DATA, pilot_optimal_sample_size_for_eq_test(100, 10, 0,
+            100, 10, 0, 0.05, &opt_sample_size));
+    ASSERT_EQ(42, opt_sample_size);
 }
 
 TEST(StatisticsUnitTest, TestSpeedOfLight) {

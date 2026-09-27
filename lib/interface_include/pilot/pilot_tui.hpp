@@ -448,7 +448,12 @@ private:
             if (wi_.wps_has_data) {
                 draw_data_line("WPS alpha: ", format_wps_(NULL, wi_.wps_alpha), "");
                 draw_data_line("WPS v: ", format_wps_(NULL, wi_.wps_v), "");
-                draw_data_line("WPS v CI: ", format_wps_(NULL, wi_.wps_v_ci), "");
+                if (wi_.wps_v_ci >= 0) {
+                    draw_data_line("WPS v CI: ", format_wps_(NULL, wi_.wps_v_ci), "");
+                } else {
+                    draw_buf_ << "Not enough data for WPS v CI";
+                    flush_buf_new_line();
+                }
             } else {
                 draw_buf_ << "Not enough data for WPS analysis";
                 flush_buf_new_line();

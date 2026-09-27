@@ -444,11 +444,14 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
             }
             if (wl->wps_enabled()) {
                 ss << " WPS ";
-                if (wi->wps_has_data) {
+                if (wi->wps_has_data && wi->wps_v_ci >= 0) {
                     ss << str(format("a %1%, v %2%, v_ci %3% (%4%%%)")
                               % wi->wps_alpha % wi->wps_v_formatted
                               % wi->wps_v_ci_formatted
                               % (100.0 * wi->wps_v_ci_formatted / wi->wps_v_formatted));
+                } else if (wi->wps_has_data) {
+                    ss << str(format("a %1%, v %2%, not enough data for v_ci")
+                              % wi->wps_alpha % wi->wps_v_formatted);
                 } else {
                     ss << "no data";
                 }
@@ -638,7 +641,7 @@ int pilot_export(const pilot_workload_t *wl, const char *dirname) noexcept {
         filename << dirname << "/" << "wps_analysis.csv";
         of.exceptions(ofstream::failbit | ofstream::badbit);
         of.open(filename.str().c_str());
-        of << "wps_naive_v,wps_naive_v_formatted,wps_naive_v_err,wps_naive_v_err_percent,wps_alpha,wps_alpha_formatted,wps_v,wps_v_formatted,wps_v_ci,wps_v_ci_formatted,wps_err,wps_err_percent" << endl;
+        of << "wps_naive_v,wps_naive_v_formatted,wps_naive_v_err,wps_naive_v_err_percent,wps_alpha,wps_v,wps_v_formatted,wps_v_ci,wps_v_ci_formatted,wps_err,wps_err_percent" << endl;
         of << wl->analytical_result_.wps_harmonic_mean << ","
            << wl->analytical_result_.wps_harmonic_mean_formatted << ","
            << wl->analytical_result_.wps_naive_v_err << ","
@@ -652,7 +655,7 @@ int pilot_export(const pilot_workload_t *wl, const char *dirname) noexcept {
                << wl->analytical_result_.wps_err << ","
                << wl->analytical_result_.wps_err_percent << endl;
         } else {
-            of << ",,,,,,,," << endl;
+            of << ",,,,,," << endl;
         }
         of.close();
 
@@ -1099,6 +1102,13 @@ double pilot_p_eq(double mean1, double mean2, size_t size1, size_t size2,
     }
 
     double d = mean1 - mean2;
+    if (0 == var1 && 0 == var2) {
+        // Neither sample has any variance, so the means are known exactly.
+        // The degree of freedom would be 0/0.
+        if (ci_left)  *ci_left = d;
+        if (ci_right) *ci_right = d;
+        return 0 == d ? 1 : 0;
+    }
     double sc = sqrt(var1 / double(size1) + var2 / double(size2));
     double t = d / sc;
 
@@ -1131,13 +1141,45 @@ int pilot_optimal_sample_size_for_eq_test(double baseline_mean,
         return ERR_NOT_ENOUGH_DATA;
     }
 
+    double d = baseline_mean - new_mean;
+    if (0 == baseline_var && 0 == new_var) {
+        // Neither sample has any variance, so the means are known exactly.
+        // The degree of freedom would be 0/0.
+        if (0 == d) {
+            info_log << __func__ << "(): the means are the same, cannot calculate sample size";
+            return ERR_NOT_ENOUGH_DATA;
+        }
+        *opt_new_sample_size = 0;
+        return 0;
+    }
+    if (!(required_p > 0 && required_p < 1)) {
+        info_log << __func__ << "(): required_p must be in (0, 1)";
+        return ERR_WRONG_PARAM;
+    }
     double deg_of_freedom = pilot_calc_deg_of_freedom(baseline_var, new_var, baseline_sample_size, new_sample_size);
     students_t dist(deg_of_freedom);
     double t = quantile(dist, required_p / 2);
 
-    double d = baseline_mean - new_mean;
-    double opt_ss = new_var / (pow(d / t, 2) -
-                             baseline_var / baseline_sample_size);
+    // We need |d| / sqrt(baseline_var / baseline_sample_size + new_var / n) >= |t|,
+    // which is new_var / n <= (d/t)^2 - baseline_var / baseline_sample_size
+    double denom = pow(d / t, 2) - baseline_var / baseline_sample_size;
+    if (!(denom > 0)) {
+        // No sample size is large enough: either the means are the same, or
+        // the baseline alone has more uncertainty than required_p allows
+        info_log << __func__ << "(): the difference of the means (" << d
+                 << ") is too small for the variance of the baseline, cannot calculate sample size";
+        return ERR_NOT_ENOUGH_DATA;
+    }
+    double opt_ss = new_var / denom;
+    // Round up. The sample size is taken down by one part in 1e9 first so
+    // that a rounding error in a result that should be a whole number
+    // doesn't add one more sample. One part in 1e9 of the variance is far
+    // below what we can measure.
+    opt_ss = ceil(opt_ss * (1 - 1e-9));
+    if (!(opt_ss < static_cast<double>(std::numeric_limits<size_t>::max()))) {
+        info_log << __func__ << "(): calculated sample size is out of range";
+        return ERR_NOT_ENOUGH_DATA;
+    }
     *opt_new_sample_size = static_cast<size_t>(opt_ss);
     return 0;
 }
@@ -1674,7 +1716,7 @@ bool calc_next_round_work_amount_from_wps(const pilot_workload_t *wl, size_t *ne
         if (wl->analytical_result_.wps_has_data) {
             const size_t kWPSSubsessionSampleSizeThreshold = 20;
             if (wl->analytical_result_.wps_subsession_sample_size > kWPSSubsessionSampleSizeThreshold) {
-                if (wl->analytical_result_.wps_v > 0 && wl->analytical_result_.wps_v_ci > 0 &&
+                if (wl->analytical_result_.wps_v > 0 && wl->analytical_result_.wps_v_ci >= 0 &&
                     wl->analytical_result_.wps_v_ci < wl->get_required_ci(wl->analytical_result_.wps_v)) {
                     info_log << "WPS confidence interval small enough";
                     return false;
