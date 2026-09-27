@@ -95,6 +95,10 @@ add_custom_target(copy_test_files ALL
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_with_work_amount.sh $<TARGET_FILE_DIR:bench>
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_with_duration.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_benchmark_duration_col.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_pilot_opt_parsing_expected_work_amount.log $<TARGET_FILE_DIR:bench>)
 
 # tests
@@ -102,6 +106,9 @@ set (PILOT_TESTS_LIBRARIES pilot_sharedlib ${Boost_LIBRARIES_WITHOUT_PYTHON} ${G
 
 add_executable (unit_test_cli test/unit_test_cli.cc run_program.cc)
 target_link_libraries (unit_test_cli ${PILOT_TESTS_LIBRARIES})
+# gtest is an external project. Without this a parallel build can compile the
+# test before gtest's header files are downloaded.
+add_dependencies (unit_test_cli gtest)
 
 add_test (NAME unit_test_analyze
 		  COMMAND unit_test_analyze.sh)
@@ -109,6 +116,8 @@ add_test (NAME unit_test_benchmark
           COMMAND unit_test_benchmark.sh)
 add_test (NAME unit_test_benchmark_binomial_proportion
         COMMAND unit_test_benchmark_binomial_proportion.sh)
+add_test (NAME unit_test_benchmark_duration_col
+          COMMAND unit_test_benchmark_duration_col.sh)
 add_test (NAME unit_test_cli
 		  COMMAND unit_test_cli)
 if (WITH_LUA)

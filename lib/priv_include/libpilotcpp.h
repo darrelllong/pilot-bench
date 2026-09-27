@@ -333,6 +333,10 @@ void simple_regression_model(const std::vector<T1> &x, const std::vector<T2> &y,
  * @param duration_threshold any round whose duration is less than this threshold is discarded
  * @param v
  * @param ci_width
+ * @param ssr_out the sum of squared residuals in s^2, calculated from the
+ * rounds that are longer than duration_threshold
+ * @param ssr_percent_out sqrt(ssr) divided by the sum of the durations of
+ * the same rounds
  * @return 0 on success; ERR_NOT_ENOUGH_DATA when there is not enough sample
  * for calculate v, which includes the case that all the work amounts are the
  * same; ERR_NOT_ENOUGH_DATA_FOR_CI when there is enough data for
@@ -446,11 +450,14 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
         sub_session_ssr += pow(*wps_alpha + wps_inv_v * wa - dur, 2);
     }
     debug_log << __func__ << "(): sub_session_ssr: " << sub_session_ssr;
+    // The error of the model is calculated from the rounds that are longer
+    // than duration_threshold. The model doesn't apply to the rounds that
+    // were filtered out.
     double ssr = 0;
     double dur_sum = 0;
-    for (size_t i = 0; i < rounds; ++i) {
-        double wa = double(round_work_amounts_raw[i]);
-        double dur = double(round_durations_raw[i]) / ONE_SECOND;
+    for (size_t i = 0; i < round_work_amounts.size(); ++i) {
+        double wa = double(round_work_amounts[i]);
+        double dur = double(round_durations[i]) / ONE_SECOND;
         ssr += pow(*wps_alpha + wps_inv_v * wa - dur, 2);
         dur_sum += dur;
     }

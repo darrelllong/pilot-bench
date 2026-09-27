@@ -67,6 +67,35 @@ TEST(PilotCLIUnitTest, ExtractCSVFields) {
     ASSERT_DOUBLE_EQ(14, results2[1]);
 }
 
+TEST(PilotCLIUnitTest, ParseRoundDuration) {
+    boost::timer::nanosecond_type d = 42;
+    ASSERT_EQ(0, parse_round_duration("0.132891", 0, &d));
+    ASSERT_EQ(132891000, d);
+    ASSERT_EQ(0, parse_round_duration("665.921,57.1027,0.134727", 1, &d));
+    ASSERT_EQ(57102700000LL, d);
+    // the nearest nanosecond
+    ASSERT_EQ(0, parse_round_duration("1.0000000006", 0, &d));
+    ASSERT_EQ(1000000001, d);
+    ASSERT_EQ(0, parse_round_duration("0", 0, &d));
+    ASSERT_EQ(0, d);
+}
+
+TEST(PilotCLIUnitTest, ParseRoundDurationError) {
+    boost::timer::nanosecond_type d = 42;
+    // the column doesn't exist
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("0.132891", 1, &d));
+    // not a number
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("0.132891,abc", 1, &d));
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("", 0, &d));
+    // not a duration
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("-0.5", 0, &d));
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("nan", 0, &d));
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("inf", 0, &d));
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("1e10", 0, &d));
+    // the output must not be touched
+    ASSERT_EQ(42, d);
+}
+
 int main(int argc, char **argv) {
     // Use a deterministic death-test backend across environments.
     ::testing::FLAGS_gtest_death_test_style = "threadsafe";

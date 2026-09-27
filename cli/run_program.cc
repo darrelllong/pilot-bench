@@ -58,8 +58,10 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/program_options.hpp>
 #include <boost/timer/timer.hpp>
+#include <cmath>
 #include <common.h>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include "pilot-cli.h"
 #include <signal.h>
@@ -225,6 +227,33 @@ static void _free_argv_vector(vector<char*> &v) {
         free(p);
 }
 
+int parse_round_duration(const std::string &prog_stdout, size_t duration_col,
+                         nanosecond_type *round_duration) {
+    double duration_in_sec;
+    try {
+        vector<int> col{static_cast<int>(duration_col)};
+        duration_in_sec = extract_csv_fields<double>(prog_stdout, col)[0];
+    } catch (const boost::bad_lexical_cast &e) {
+        fatal_log << "Cannot parse the round duration (column " << duration_col
+                  << ") in client program's output: " << prog_stdout;
+        return ERR_WL_FAIL;
+    } catch (const exception &e) {
+        fatal_log << "Cannot find the round duration (column " << duration_col
+                  << ") in client program's output: " << prog_stdout;
+        return ERR_WL_FAIL;
+    }
+    double duration_in_ns = duration_in_sec * pilot::ONE_SECOND;
+    // this also catches NaN
+    if (!(duration_in_ns >= 0 &&
+          duration_in_ns < static_cast<double>(std::numeric_limits<nanosecond_type>::max()))) {
+        fatal_log << "Invalid round duration (" << duration_in_sec
+                  << " s) in client program's output: " << prog_stdout;
+        return ERR_WL_FAIL;
+    }
+    *round_duration = static_cast<nanosecond_type>(llround(duration_in_ns));
+    return 0;
+}
+
 /**
  * \brief the sequential write workload func for libpilot
  * \details This function generates a series of sequential I/O and calculate the throughput.
@@ -304,6 +333,16 @@ int workload_func(const pilot_workload_t *wl,
     } catch (const exception &e) {
         fatal_log << e.what();
         return ERR_WL_FAIL;
+    }
+
+    if ((size_t)-1 != g_duration_col) {
+        int rc = parse_round_duration(prog_stdout, g_duration_col, round_duration);
+        if (0 != rc)
+            return rc;
+        if (0 == *round_duration) {
+            // libpilot takes a round duration of 0 as not reported
+            warning_log << "The round duration from the client program is 0, using the duration measured by Pilot instead";
+        }
     }
 
     return 0;

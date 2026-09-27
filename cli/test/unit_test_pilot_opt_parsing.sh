@@ -147,8 +147,8 @@ run ./bench run_program -v --pi "throughput,MB/s,2,1,0:latency,ms,3,0:threads,,4
 run ./bench run_program -v --pi "throughput,MB/s,2,1:latency,ms,3,0,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
 
 # Try to run a workload that accepts work amount from 100 to 200.
-# "-d 1" designates that the first column is the round duration.
+# "-d 0" designates that the first column is the round duration.
 rm -f /tmp/work_amount_log.txt
-run ./bench run_program -w "100,200" -d 1 -- ./mock_benchmark_with_work_amount.sh %WORK_AMOUNT% /tmp/work_amount_log.txt >/tmp/${BASENAME}.out 2>&1
+run ./bench run_program -w "100,200" -d 0 -- ./mock_benchmark_with_work_amount.sh %WORK_AMOUNT% /tmp/work_amount_log.txt >/tmp/${BASENAME}.out 2>&1
 diff unit_test_pilot_opt_parsing_expected_work_amount.log /tmp/work_amount_log.txt
 

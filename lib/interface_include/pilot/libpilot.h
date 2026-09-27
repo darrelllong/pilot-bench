@@ -594,6 +594,10 @@ DLL_PUBLIC double pilot_subsession_autocorrelation_coefficient_p(const double *d
  * coefficient (usually 0.1)
  * @param[out] v the calculated performance
  * @param[out] ci_width the calculated width of the confidence interval
+ * @param[out] ssr_out the sum of squared residuals in s^2, calculated from
+ * the rounds that are longer than duration_threshold
+ * @param[out] ssr_out_percent sqrt(ssr) divided by the sum of the durations
+ * of the same rounds. This is a fraction, not a percentage.
  * @return 0 on success; ERR_NOT_ENOUGH_DATA when there is not enough sample
  * for calculate v, which includes the case that all the work amounts are the
  * same, and the outputs are not changed in this case;
@@ -701,14 +705,14 @@ struct pilot_analytical_result_t {
     size_t wps_subsession_sample_size; //! sample size after merging adjacent samples to reduce autocorrelation coefficient
     double wps_harmonic_mean;          //! wps is a rate so only harmonic mean is valid
     double wps_harmonic_mean_formatted;
-    double wps_naive_v_err;
-    double wps_naive_v_err_percent;
+    double wps_naive_v_err;            //! the sum of the squares of the errors (in s^2) of the round durations predicted by the naive mean, from the same rounds as wps_err
+    double wps_naive_v_err_percent;    //! sqrt(wps_naive_v_err) divided by the sum of the durations of these rounds. This is a fraction, not a percentage.
     double wps_alpha;                  //! the alpha as in t = alpha + v*w
     double wps_v;                      //! the v as in t = alpha + v*w
     double wps_v_formatted;
     size_t wps_optimal_subsession_size;
-    double wps_err;
-    double wps_err_percent;
+    double wps_err;                    //! the sum of squared residuals (in s^2) of the WPS regression, from the rounds that are longer than the duration threshold
+    double wps_err_percent;            //! sqrt(wps_err) divided by the sum of the durations of these rounds. This is a fraction, not a percentage.
     double wps_v_ci;                   //! the width of the confidence interval of v; -1 if there is not enough data for calculating it
     double wps_v_ci_formatted;
 

@@ -70,7 +70,11 @@ Options
    * - ``--duration-col <col>``
      - ``-d``
      - Zero-based column index of the round duration (in seconds) in the
-       workload's CSV output. Required for WPS analysis (``--wps``).
+       workload's CSV output. Required for WPS analysis (``--wps``). Pilot
+       uses this duration, not the time it takes to run the workload
+       program, which includes starting the program. If the duration is 0,
+       Pilot uses the time it measured. The session fails if the column is
+       missing or is not a valid duration.
    * - ``--env <NAME=VALUE>``
      -
      - Set an environment variable for the workload process only. Useful for

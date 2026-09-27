@@ -290,6 +290,26 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSubsession3) {
     ASSERT_NEAR(0.0269967, v_ci, 1e-6);
 }
 
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionErrorOfFilteredRounds) {
+    // Five rounds of duration = 42 + 2 * work_amount, and a round of 1 s
+    // that the duration threshold filters out. The error is from the rounds
+    // that the regression uses, so it is 0. With the short round it would
+    // be (42 + 2 * 10 - 1)^2 = 3721.
+    const vector<size_t> work_amount{50, 100, 10, 150, 200, 250};
+    const vector<nanosecond_type> round_duration{142 * ONE_SECOND, 242 * ONE_SECOND, 1 * ONE_SECOND,
+                                                 342 * ONE_SECOND, 442 * ONE_SECOND, 542 * ONE_SECOND};
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 42, ssr_percent = 42;
+    ASSERT_EQ(0, pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+        work_amount.data(), round_duration.data(),
+        1,               // autocorrelation_coefficient_limit
+        2 * ONE_SECOND,  // duration threshold
+        &alpha, &v, &v_ci, &ssr, &ssr_percent));
+    ASSERT_NEAR(42, alpha, 1e-6);
+    ASSERT_NEAR(0.5, v, 1e-9);
+    ASSERT_NEAR(0, ssr, 1e-9);
+    ASSERT_NEAR(0, ssr_percent, 1e-9);
+}
+
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSameWorkAmount) {
     // The slope is not defined when all rounds have the same work amount.
     // The output must not be touched.

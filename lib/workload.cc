@@ -534,7 +534,7 @@ char* pilot_workload_t::text_workload_summary(void) const {
         } else {
             s << "Not enough data for WPS v CI" << endl;
         }
-        s << "WPS err: " << analytical_result_.wps_err << " (" << analytical_result_.wps_err_percent << "%)" << endl;
+        s << "WPS err: " << analytical_result_.wps_err << " (" << analytical_result_.wps_err_percent * 100 << "%)" << endl;
     } else {
         s << "Not enough data for WPS analysis" << endl;
     }
@@ -571,20 +571,31 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
         analytical_result_.wps_has_data = false;
         return;
     }
-    // calculate naive_v and its error
+    // calculate naive_v
     size_t sum_of_work_amount =
             accumulate(round_work_amounts_.begin(), round_work_amounts_.end(), static_cast<size_t>(0));
     nanosecond_type sum_of_round_durations =
             accumulate(round_durations_.begin(), round_durations_.end(), static_cast<nanosecond_type>(0));
     analytical_result_.wps_harmonic_mean = double(sum_of_work_amount) / ( double(sum_of_round_durations) / ONE_SECOND );
     analytical_result_.wps_harmonic_mean_formatted = format_wps(analytical_result_.wps_harmonic_mean);
-    analytical_result_.wps_naive_v_err = 0;
-    for (size_t i = 0; i < rounds_; ++i) {
-        double wa  = double(round_work_amounts_[i]);
-        double dur = double(round_durations_[i]) / ONE_SECOND;
-        analytical_result_.wps_naive_v_err += pow(wa / analytical_result_.wps_harmonic_mean - dur, 2);
-    }
-    analytical_result_.wps_naive_v_err_percent = sqrt(analytical_result_.wps_naive_v_err) / sum_of_round_durations;
+    // The error of naive_v is calculated from the same rounds as the error
+    // of the WPS regression, which are the rounds longer than the duration
+    // threshold, so that the two errors can be compared.
+    auto calc_naive_v_err = [this](nanosecond_type duration_threshold) {
+        double err = 0;
+        double dur_sum = 0;
+        for (size_t i = 0; i < rounds_; ++i) {
+            if (round_durations_[i] <= duration_threshold)
+                continue;
+            double wa  = double(round_work_amounts_[i]);
+            double dur = double(round_durations_[i]) / ONE_SECOND;
+            err += pow(wa / analytical_result_.wps_harmonic_mean - dur, 2);
+            dur_sum += dur;
+        }
+        analytical_result_.wps_naive_v_err = err;
+        analytical_result_.wps_naive_v_err_percent = dur_sum > 0 ? sqrt(err) / dur_sum : 0;
+    };
+    calc_naive_v_err(short_round_detection_threshold_);
 
     // the WPS linear regression method
     //
@@ -649,6 +660,7 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
         }
 
         analytical_result_.wps_has_data = true;
+        calc_naive_v_err(duration_threshold);
         analytical_result_.wps_v_formatted = format_wps(analytical_result_.wps_v);
         if (ERR_NOT_ENOUGH_DATA_FOR_CI == res) {
             // v is valid but the data do not give it an upper bound yet

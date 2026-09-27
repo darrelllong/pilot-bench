@@ -101,6 +101,17 @@ std::vector<ResultType> extract_csv_fields(const std::string &csvstr,
     return r;
 }
 
+/**
+ * \brief Get the round duration from the output of the client program
+ * @param[in] prog_stdout the output of the client program
+ * @param duration_col the column (0-based) of the round duration in seconds
+ * @param[out] round_duration the round duration in nanoseconds
+ * @return 0 on success; ERR_WL_FAIL if the column doesn't exist or is not a
+ * valid duration
+ */
+int parse_round_duration(const std::string &prog_stdout, size_t duration_col,
+                         boost::timer::nanosecond_type *round_duration);
+
 inline void print_read_the_doc_info(void) {
     std::cerr << "To understand the math behind Pilot or read tutorials, please read the" << std::endl;
     std::cerr << "documentation at https://docs.ascar.io/" << std::endl;

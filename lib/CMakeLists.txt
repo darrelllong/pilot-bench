@@ -137,6 +137,12 @@ target_link_libraries (unit_test_wps ${PILOT_TESTS_LIBRARIES})
 add_executable (unit_test_macros test/unit_test_macros.cc)
 target_link_libraries (unit_test_macros ${PILOT_TESTS_LIBRARIES})
 
+# gtest is an external project. Without this a parallel build can compile the
+# tests before gtest's header files are downloaded.
+foreach (test_target func_test_seq_write unit_test_misc unit_test_run_workload unit_test_statistics unit_test_session_duration unit_test_unit_readings_iter unit_test_readings_warmup_removal unit_test_compare_results unit_test_wps unit_test_macros)
+  add_dependencies (${test_target} gtest)
+endforeach ()
+
 
 add_test (NAME unit_test_misc
 		  COMMAND unit_test_misc)

@@ -54,6 +54,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include "gtest/gtest.h"
 #include <memory>
@@ -247,6 +248,20 @@ TEST(PilotRunWorkloadTest, WPSLeavesOutShortRounds) {
         if (1 == i || 5 == i)
             add_mock_round(wl, 3, 0.9);
     }
+    // The naive mean is from all rounds. Its error and the error of the
+    // regression are from the ten rounds that the regression uses.
+    double sum_wa = 0, sum_dur = 0;
+    for (size_t i = 0; i < wl->rounds_; ++i) {
+        sum_wa += wl->round_work_amounts_[i];
+        sum_dur += double(wl->round_durations_[i]) / ONE_SECOND;
+    }
+    const double exp_naive_v = sum_wa / sum_dur;
+    double exp_naive_v_err = 0, exp_dur_sum = 0;
+    for (size_t wa : g_mock_wps_work_amounts) {
+        double dur = exp_alpha + wa / exp_v;
+        exp_naive_v_err += pow(wa / exp_naive_v - dur, 2);
+        exp_dur_sum += dur;
+    }
     // The second analysis has the result of the first one to start from. It
     // must not let the short rounds back in.
     for (int i = 0; i < 2; ++i) {
@@ -255,6 +270,13 @@ TEST(PilotRunWorkloadTest, WPSLeavesOutShortRounds) {
         ASSERT_EQ(10, ar->wps_subsession_sample_size);
         ASSERT_NEAR(exp_alpha, ar->wps_alpha, 1e-6);
         ASSERT_NEAR(exp_v, ar->wps_v, 1e-6);
+        // With the two short rounds the error would be 52.02.
+        ASSERT_NEAR(0, ar->wps_err, 1e-6);
+        ASSERT_NEAR(0, ar->wps_err_percent, 1e-6);
+        ASSERT_NEAR(exp_naive_v, ar->wps_harmonic_mean, 1e-6);
+        ASSERT_NEAR(39.2326, exp_naive_v_err, 1e-4);
+        ASSERT_NEAR(exp_naive_v_err, ar->wps_naive_v_err, 1e-6);
+        ASSERT_NEAR(sqrt(exp_naive_v_err) / exp_dur_sum, ar->wps_naive_v_err_percent, 1e-9);
     }
     pilot_destroy_workload(wl);
 }
@@ -281,6 +303,8 @@ TEST(PilotRunWorkloadTest, WPSLeavesOutRoundsShorterThanNegativeAlpha) {
         ASSERT_EQ(10, ar->wps_subsession_sample_size);
         ASSERT_NEAR(exp_alpha, ar->wps_alpha, 1e-6);
         ASSERT_NEAR(exp_v, ar->wps_v, 1e-6);
+        // the two rounds that were left out are not part of the error
+        ASSERT_NEAR(0, ar->wps_err, 1e-6);
     }
     pilot_destroy_workload(wl);
 }
