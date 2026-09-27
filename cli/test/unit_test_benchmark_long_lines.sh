@@ -48,9 +48,13 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 set -euo pipefail
 
+# bench saves the results in the current directory if it is not given one
+RESULT_DIR=`mktemp -d`
+trap 'rm -rf "$RESULT_DIR"' EXIT
+
 TMPFILE=`mktemp`
 rm -f /tmp/pilot_mock_benchmark_long_lines_round.txt
-./bench run_program --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,1,0,1" \
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,1,0,1" \
     -- ./mock_benchmark_long_lines.sh >"$TMPFILE" 2>&1 || :
 
 grep -q "Rounds: 7" "$TMPFILE"

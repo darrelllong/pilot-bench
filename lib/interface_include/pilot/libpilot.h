@@ -479,18 +479,6 @@ DLL_PUBLIC size_t pilot_get_total_num_of_unit_readings(const pilot_workload_t *w
 DLL_PUBLIC const char *pilot_strerror(int errnum) NOEXCEPT;
 
 /**
- * \brief Estimate the sample variance when sample cannot be proven not
- * correlated and the distribution of sample mean is unknown.
- * \details This function uses the method of independent replications as
- * described in equation (2.18) and (2.19) in [Ferrari78].
- * @param n sample size
- * @param sample sample data
- * @param q size of independent subsessions
- * @return
- */
-DLL_PUBLIC int pilot_est_sample_var_dist_unknown(const size_t n, const double *sample, size_t q) NOEXCEPT;
-
-/**
  * \brief Return the total number of rounds so far.
  * @param[in] wl pointer to the workload struct
  * @return the number of rounds; a negative number on error

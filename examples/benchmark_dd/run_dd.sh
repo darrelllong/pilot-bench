@@ -9,7 +9,7 @@ OUTPUT_FILE=$1
 IO_COUNT=$2
 
 # GNU: "104857600 bytes (105 MB, 100 MiB) copied, 0.0452 s, 2.3 GB/s"
-# BSD: "104857600 bytes transferred in 0.015194 secs (690127811 bytes/sec)"
+# BSD: "10485760 bytes transferred in 0.015194 secs (690127811 bytes/sec)"
 LC_ALL=C dd if=/dev/zero of="$OUTPUT_FILE" bs=1048576 count="$IO_COUNT" 2>&1 | \
     awk '/ copied, /              { print $(NF-3); found = 1 }
          / bytes transferred in / { print $5;      found = 1 }

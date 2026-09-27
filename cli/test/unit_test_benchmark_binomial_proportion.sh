@@ -17,10 +17,14 @@
 # https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 set -euo pipefail
 
+# bench saves the results in the current directory if it is not given one
+RESULT_DIR=`mktemp -d`
+trap 'rm -rf "$RESULT_DIR"' EXIT
+
 TMPFILE=`mktemp`
 rm -f /tmp/pilot_mock_benchmark_binomial_proportion_round.txt
 # We use 0.9 as CI required percent because our sample size is small
-./bench run_program --ci-perc 0.9 --min-sample-size 10 --pi "success rate,,0,2,1" \
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.9 --min-sample-size 10 --pi "success rate,,0,2,1" \
     -- ./mock_benchmark_binomial_proportion.sh >"$TMPFILE" 2>&1
 
 grep -q "success rate: R m0.55 c0.4657 v0.2605" "$TMPFILE"

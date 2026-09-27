@@ -67,6 +67,38 @@ TEST(PilotCLIUnitTest, ExtractCSVFields) {
     ASSERT_DOUBLE_EQ(14, results2[1]);
 }
 
+TEST(PilotCLIUnitTest, SplitCSVLine) {
+    typedef vector<string> fields;
+    ASSERT_EQ((fields{"1", "2", "3"}), split_csv_line("1,2,3"));
+    ASSERT_EQ((fields{"1", "2", "3"}), split_csv_line("1 2 3"));
+    ASSERT_EQ((fields{"1", "2", "3"}), split_csv_line("1\t2\t3"));
+    // whitespace next to a comma
+    ASSERT_EQ((fields{"1", "0.5"}), split_csv_line("1, 0.5"));
+    ASSERT_EQ((fields{"1", "0.5"}), split_csv_line("1 ,0.5"));
+    ASSERT_EQ((fields{"1", "0.5"}), split_csv_line("1 , 0.5"));
+    ASSERT_EQ((fields{"1", "0.5", "3"}), split_csv_line("1,\t0.5 3"));
+    // columns that are lined up with spaces
+    ASSERT_EQ((fields{"1", "22", "3"}), split_csv_line("1    22   3"));
+    // the beginning and the end of the line
+    ASSERT_EQ((fields{"1", "2"}), split_csv_line("  1,2"));
+    ASSERT_EQ((fields{"1", "2"}), split_csv_line("1,2\r\n"));
+    ASSERT_EQ((fields{"1", "2"}), split_csv_line("1,2  \r"));
+    // only commas make empty fields
+    ASSERT_EQ((fields{"1", "", "3"}), split_csv_line("1,,3"));
+    ASSERT_EQ((fields{"1", "", "3"}), split_csv_line("1, ,3"));
+    ASSERT_EQ((fields{"", "2"}), split_csv_line(",2"));
+    ASSERT_EQ((fields{"1", ""}), split_csv_line("1,"));
+    ASSERT_EQ((fields{"1", ""}), split_csv_line("1, \n"));
+    ASSERT_EQ((fields{"", ""}), split_csv_line(","));
+    ASSERT_EQ((fields{"", "", "", "4"}), split_csv_line(",,,4"));
+    // nothing
+    ASSERT_EQ((fields{""}), split_csv_line(""));
+    ASSERT_EQ((fields{""}), split_csv_line(" \r\n"));
+
+    vector<double> r = extract_csv_fields<double>("1, 0.5", vector<int>{1});
+    ASSERT_DOUBLE_EQ(0.5, r[0]);
+}
+
 TEST(PilotCLIUnitTest, ExtractCSVFieldsWrongColumn) {
     string s = "665.921,57.1027,0.134727";
     ASSERT_THROW(extract_csv_fields<double>(s, vector<int>{3}), runtime_error);

@@ -56,6 +56,7 @@
 #include <boost/format.hpp>
 #include <common.h>
 #include <config.h>
+#include <cstring>
 #include <iostream>
 #include <pilot/libpilot.h>
 #include <sstream>
@@ -82,14 +83,57 @@ inline std::string get_timestamp(void) {
     return ss.str();
 }
 
+/**
+ * \brief Split a line into fields
+ * \details Fields are separated by a comma or by whitespace. Whitespace next
+ * to a comma is part of the separator, so "1, 2" has two fields. Whitespace
+ * at the beginning and at the end of the line is ignored, which includes the
+ * carriage return of files generated on Windows. Only commas can make an
+ * empty field: "1,,2" has three fields.
+ * @param line the line
+ * @return the fields. A line that has nothing in it has one empty field.
+ */
+inline std::vector<std::string> split_csv_line(const std::string &line) {
+    using namespace std;
+    static const char * const whitespace = " \t\r\n";
+    vector<string> fields;
+    const size_t begin = line.find_first_not_of(whitespace);
+    if (string::npos == begin) {
+        fields.push_back(string());
+        return fields;
+    }
+    const size_t end = line.find_last_not_of(whitespace) + 1;
+    string field;
+    size_t pos = begin;
+    while (pos < end) {
+        const char c = line[pos];
+        if (',' == c) {
+            fields.push_back(field);
+            field.clear();
+            pos = line.find_first_not_of(whitespace, pos + 1);
+        } else if (NULL != strchr(whitespace, c)) {
+            // pos < end, so there is a character that is not whitespace
+            pos = line.find_first_not_of(whitespace, pos);
+            // the comma that follows ends the field
+            if (',' != line[pos]) {
+                fields.push_back(field);
+                field.clear();
+            }
+        } else {
+            field.push_back(c);
+            ++pos;
+        }
+    }
+    fields.push_back(field);
+    return fields;
+}
+
 template <typename ResultType>
 std::vector<ResultType> extract_csv_fields(const std::string &csvstr,
                                            const std::vector<int> &columns) {
     using namespace std;
     using namespace boost;
-    vector<string> pidata_strs;
-    // must have \r here to support files generated on Windows
-    boost::split(pidata_strs, csvstr, boost::is_any_of(" \r\n\t,"));
+    vector<string> pidata_strs = split_csv_line(csvstr);
     vector<ResultType> r(columns.size());
     for (size_t i = 0; i < columns.size(); ++i) {
         int col = columns[i];

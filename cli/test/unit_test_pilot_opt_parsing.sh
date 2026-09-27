@@ -48,6 +48,10 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 set -euo pipefail
 
+# bench saves the results in the current directory if it is not given one
+RESULT_DIR=`mktemp -d`
+trap 'rm -rf "$RESULT_DIR"' EXIT
+
 run() {
     eval "$@" || :
     if which valgrind >/dev/null; then
@@ -58,18 +62,18 @@ run() {
 
 BASENAME=`basename $0`
 
-run ./bench run_program 2>&1 | grep -q "Error: program_path is required"
+run ./bench run_program -o ${RESULT_DIR}/r 2>&1 | grep -q "Error: program_path is required"
 
-run ./bench run_program -- 2>&1 | grep -q "Error: program_path is required"
+run ./bench run_program -o ${RESULT_DIR}/r -- 2>&1 | grep -q "Error: program_path is required"
 
-run ./bench run_program -- true 2>&1 | grep -q "Error: no PI or duration column set, exiting..."
+run ./bench run_program -o ${RESULT_DIR}/r -- true 2>&1 | grep -q "Error: no PI or duration column set, exiting..."
 
-run ./bench run_program --ci -1 --ci-perc -1 --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "Error: CI (percent of mean) and CI (absolute value) cannot be both disabled. At least one must be set."
+run ./bench run_program -o ${RESULT_DIR}/r --ci -1 --ci-perc -1 --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "Error: CI (percent of mean) and CI (absolute value) cannot be both disabled. At least one must be set."
 
 # Check the default quick preset
 TMPFILE=`mktemp`
 # We need to put in some workload amount to enable short round detection
-run ./bench run_program --pi "throughput,MB/s,2,1,1" -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --pi "throughput,MB/s,2,1,1" -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: quick" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.8" $TMPFILE
 grep -q "Setting the required width of confidence interval to 20% of mean" $TMPFILE
@@ -77,7 +81,7 @@ grep -q "Setting the required minimum subsession sample size to 30" $TMPFILE
 grep -q "Setting the short round threshold to 3 second(s)" $TMPFILE
 
 # Check the normal preset
-run ./bench run_program --preset normal --pi "throughput,MB/s,2,1,1" -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --preset normal --pi "throughput,MB/s,2,1,1" -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: normal" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.2" $TMPFILE
 grep -q "Setting the required width of confidence interval to 10% of mean" $TMPFILE
@@ -85,7 +89,7 @@ grep -q "Setting the required minimum subsession sample size to 50" $TMPFILE
 grep -q "Setting the short round threshold to 10 second(s)" $TMPFILE
 
 # Check the strict preset
-run ./bench run_program --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: strict" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.1" $TMPFILE
 grep -q "Setting the required width of confidence interval to 10% of mean" $TMPFILE
@@ -93,7 +97,7 @@ grep -q "Setting the required minimum subsession sample size to 200" $TMPFILE
 grep -q "Setting the short round threshold to 20 second(s)" $TMPFILE
 
 # Test setting CI absolute value
-run ./bench run_program --ci 42 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --ci 42 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: strict" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.1" $TMPFILE
 grep -q "Setting the required width of confidence interval to 10% of mean" $TMPFILE
@@ -102,7 +106,7 @@ grep -q "Setting the required minimum subsession sample size to 200" $TMPFILE
 grep -q "Setting the short round threshold to 20 second(s)" $TMPFILE
 
 # Short round detection should be disabled when no work amount is set
-run ./bench run_program --pi "throughput,MB/s,2,1,1" -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --pi "throughput,MB/s,2,1,1" -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: quick" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.8" $TMPFILE
 grep -q "Setting the required width of confidence interval to 20% of mean" $TMPFILE
@@ -110,7 +114,7 @@ grep -q "Setting the required minimum subsession sample size to 30" $TMPFILE
 grep -q "Disabled short round detection because work amount information is not set." $TMPFILE
 
 # Test overriding CI
-run ./bench run_program --ci-perc 0.12 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.12 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: strict" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.1" $TMPFILE
 grep -q "Setting the required width of confidence interval to 12% of mean" $TMPFILE
@@ -118,7 +122,7 @@ grep -q "Setting the required minimum subsession sample size to 200" $TMPFILE
 grep -q "Setting the short round threshold to 20 second(s)" $TMPFILE
 
 # Test overriding autocorrelation coefficient range (AC)
-run ./bench run_program --ac .3 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --ac .3 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: strict" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.3" $TMPFILE
 grep -q "Setting the required width of confidence interval to 10% of mean" $TMPFILE
@@ -126,7 +130,7 @@ grep -q "Setting the required minimum subsession sample size to 200" $TMPFILE
 grep -q "Setting the short round threshold to 20 second(s)" $TMPFILE
 
 # Test overriding both AC and CI
-run ./bench run_program --ci-perc 0.12 -a 0.4 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.12 -a 0.4 --pi "throughput,MB/s,2,1,1" --preset strict -w 10,20 -- true >$TMPFILE 2>&1
 grep -q "Preset mode activated: strict" $TMPFILE
 grep -q "Setting the limit of autocorrelation coefficient to 0.4" $TMPFILE
 grep -q "Setting the required width of confidence interval to 12% of mean" $TMPFILE
@@ -134,26 +138,39 @@ grep -q "Setting the required minimum subsession sample size to 200" $TMPFILE
 grep -q "Setting the short round threshold to 20 second(s)" $TMPFILE
 
 # Test setting session limit
-run ./bench run_program -v --pi "throughput,MB/s,2,1,1" --session-limit 50 -- true 2>&1 | grep -q "Setting session limit to 50 seconds"
-run ./bench run_program -v --pi "throughput,MB/s,2,1,1" --session-limit -1 -- true 2>&1 | grep -q "<fatal> Session limit must be greater than 0, exiting..."
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1,1" --session-limit 50 -- true 2>&1 | grep -q "Setting session limit to 50 seconds"
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1,1" --session-limit -1 -- true 2>&1 | grep -q "<fatal> Session limit must be greater than 0, exiting..."
 
 # Test other options
-run ./bench run_program -v --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "PI\[0\] name: throughput, unit: MB/s, reading must satisfy: yes, mean method: harmonic"
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "PI\[0\] name: throughput, unit: MB/s, reading must satisfy: yes, mean method: harmonic"
 
-run ./bench run_program -v --pi "throughput,MB/s,2,1:latency,ms,3,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1:latency,ms,3,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
 
-run ./bench run_program -v --pi "throughput,MB/s,2,1,0:latency,ms,3,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1,0:latency,ms,3,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
 
-run ./bench run_program -v --pi "throughput,MB/s,2,1:latency,ms,3,0,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
+run ./bench run_program -o ${RESULT_DIR}/r -v --pi "throughput,MB/s,2,1:latency,ms,3,0,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
+
+# Without a PI the WPS analysis is all that there is to do. It needs the work
+# amount, and it is enabled even if --wps is not set.
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -- true 2>&1 | grep -q "Error: work amount must be set for WPS analysis"
+run ./bench run_program -o ${RESULT_DIR}/r --wps -w "100,200" --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "Error: duration column must be set for WPS analysis"
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -w "100,200" -- true 2>&1 | grep -q "WPS analysis enabled"
+
+# The WPS analysis cannot be done if the work amount cannot change
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -w "100,100" -- true 2>&1 | grep -q "Error: WPS analysis needs a maximum work amount that is greater than the minimum"
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 --wps -w "100,100" --pi "throughput,MB/s,2,1,1" -- true 2>&1 | grep -q "Error: WPS analysis needs a maximum work amount that is greater than the minimum"
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -w "200,100" -- true 2>&1 | grep -q "Error: the minimum work amount is greater than the maximum"
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -w "-5,100" -- true 2>&1 | grep -q "Error: work amount must be two numbers that are not negative: min,max"
+run ./bench run_program -o ${RESULT_DIR}/r -d 0 -w "100" -- true 2>&1 | grep -q "Error: work amount must be two numbers that are not negative: min,max"
 
 # The duration column has to be a column
-run ./bench run_program -d -1 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
-run ./bench run_program -d -2 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
-run ./bench run_program -d 4294967296 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+run ./bench run_program -o ${RESULT_DIR}/r -d -1 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+run ./bench run_program -o ${RESULT_DIR}/r -d -2 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+run ./bench run_program -o ${RESULT_DIR}/r -d 4294967296 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
 
 # Try to run a workload that accepts work amount from 100 to 200.
 # "-d 0" designates that the first column is the round duration.
 rm -f /tmp/work_amount_log.txt
-run ./bench run_program -w "100,200" -d 0 -- ./mock_benchmark_with_work_amount.sh %WORK_AMOUNT% /tmp/work_amount_log.txt >/tmp/${BASENAME}.out 2>&1
+run ./bench run_program -o ${RESULT_DIR}/r -w "100,200" -d 0 -- ./mock_benchmark_with_work_amount.sh %WORK_AMOUNT% /tmp/work_amount_log.txt >/tmp/${BASENAME}.out 2>&1
 diff unit_test_pilot_opt_parsing_expected_work_amount.log /tmp/work_amount_log.txt
 

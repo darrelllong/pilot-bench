@@ -118,6 +118,8 @@ add_test (NAME unit_test_benchmark_binomial_proportion
         COMMAND unit_test_benchmark_binomial_proportion.sh)
 add_test (NAME unit_test_benchmark_duration_col
           COMMAND unit_test_benchmark_duration_col.sh)
+add_test (NAME unit_test_benchmark_long_lines
+          COMMAND unit_test_benchmark_long_lines.sh)
 add_test (NAME unit_test_cli
 		  COMMAND unit_test_cli)
 if (WITH_LUA)

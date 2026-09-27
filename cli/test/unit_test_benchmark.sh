@@ -48,6 +48,10 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 set -euo pipefail
 
+# bench saves the results in the current directory if it is not given one
+RESULT_DIR=`mktemp -d`
+trap 'rm -rf "$RESULT_DIR"' EXIT
+
 TMPFILE=`mktemp`
 check() {
     grep -q "response time: R m1.725 c0.2839 v0.04466" "$TMPFILE"
@@ -76,12 +80,12 @@ check() {
 }
 
 rm -f /tmp/pilot_mock_benchmark_round.txt
-./bench run_program --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" \
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" \
     -- ./mock_benchmark.sh >"$TMPFILE" 2>&1
 check
 # Test valid-rc option
 rm "$TMPFILE"
 rm -f /tmp/pilot_mock_benchmark_round.txt
-./bench run_program --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" --valid-rc 0 --valid-rc 1\
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" --valid-rc 0 --valid-rc 1\
     -- ./mock_benchmark.sh -r >"$TMPFILE" 2>&1
 check

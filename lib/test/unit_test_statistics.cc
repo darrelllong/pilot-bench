@@ -50,6 +50,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <fstream>
 #include "gtest/gtest.h"
 #include "pilot/libpilot.h"
@@ -106,8 +107,6 @@ TEST(StatisticsUnitTest, AutocorrelationCoefficient) {
     ASSERT_EQ(true, pilot_optimal_sample_size_p(g_response_time.data(), g_response_time.size(), sample_mean * 0.1, ARITHMETIC_MEAN, &q, &opt_sample_size, SAMPLE_MEAN, .95, .1));
     ASSERT_EQ(4, q);
     ASSERT_EQ(34, opt_sample_size);
-
-    //! TODO Tests function pilot_est_sample_var_dist_unknown()
 }
 
 TEST(StatisticsUnitTest, HarmonicMean) {
@@ -308,6 +307,33 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionErrorOfFilteredRound
     ASSERT_NEAR(0.5, v, 1e-9);
     ASSERT_NEAR(0, ssr, 1e-9);
     ASSERT_NEAR(0, ssr_percent, 1e-9);
+}
+
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionLongSubsession) {
+    // 360 rounds of almost ten years each, duration = 4 + work_amount / 1.5.
+    // Each work amount is used for 30 rounds in a row, which needs a
+    // subsession size of 31. The sum of the durations of a subsession,
+    // 9.7e18 ns, doesn't fit in nanosecond_type.
+    const vector<size_t> order{240, 180, 30, 90, 300, 60, 210, 360, 150, 270, 330, 120};
+    vector<size_t> work_amount;
+    vector<nanosecond_type> round_duration;
+    for (size_t c : order) {
+        for (int i = 0; i < 30; ++i) {
+            work_amount.push_back(468000000 + c * 1000);
+            round_duration.push_back(ONE_SECOND * 4 + (work_amount.back() / 3) * (2 * ONE_SECOND));
+        }
+    }
+    double alpha = 0.0, v = 0.0, v_ci = 0.0;
+    size_t subsession_sample_size = 0;
+    ASSERT_EQ(0, pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+        work_amount.data(), round_duration.data(),
+        0.1,  // autocorrelation_coefficient_limit
+        0,    // duration threshold
+        &alpha, &v, &v_ci, NULL, NULL, &subsession_sample_size));
+    ASSERT_EQ(work_amount.size() / 31, subsession_sample_size);
+    ASSERT_GT(31.0 * round_duration[0], double(std::numeric_limits<nanosecond_type>::max()));
+    ASSERT_NEAR(1.5, v, 1e-9);
+    ASSERT_NEAR(4, alpha, 1e-3);
 }
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSameWorkAmount) {

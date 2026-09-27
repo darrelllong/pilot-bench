@@ -493,7 +493,20 @@ int handle_run_program(int argc, const char** argv) {
     // parse work amount range
     if (vm.count("work-amount")) {
         vector<int> wa_cols{0, 1};
-        vector<size_t> wa = extract_csv_fields<size_t>(vm["work-amount"].as<string>(), wa_cols);
+        vector<size_t> wa;
+        try {
+            // a negative number would wrap around
+            if (string::npos != vm["work-amount"].as<string>().find('-'))
+                throw runtime_error("negative");
+            wa = extract_csv_fields<size_t>(vm["work-amount"].as<string>(), wa_cols);
+        } catch (const std::exception &e) {
+            cerr << "Error: work amount must be two numbers that are not negative: min,max" << endl;
+            return 2;
+        }
+        if (wa[0] > wa[1]) {
+            cerr << "Error: the minimum work amount is greater than the maximum" << endl;
+            return 2;
+        }
         pilot_set_init_work_amount(g_wl.get(), wa[0]);
         pilot_set_work_amount_limit(g_wl.get(), wa[1]);
         info_log << str(format("Setting work amount range to [%1%, %2%]") % wa[0] % wa[1]);
@@ -593,19 +606,30 @@ int handle_run_program(int argc, const char** argv) {
         g_valid_rc.push_back(0);
     }
 
-    if (vm.count("wps")) {
+    // When there is no PI the WPS analysis is all that there is to do, so it
+    // has to be satisfied even if --wps is not set. It would run one round
+    // and finish with no result otherwise.
+    if (vm.count("wps") || 0 == g_num_of_pi) {
         if ((size_t)-1 == g_duration_col) {
-            cerr << "Duration column must be set for WPS analysis";
+            cerr << "Error: duration column must be set for WPS analysis" << endl;
             return 2;
         }
         if (!vm.count("work-amount")) {
-            cerr << "Work amount must be set for WPS analysis";
+            cerr << "Error: work amount must be set for WPS analysis" << endl;
             return 2;
         }
-        pilot_set_wps_analysis(g_wl.get(), NULL, true, true);
+        if (0 != pilot_set_wps_analysis(g_wl.get(), NULL, true, true)) {
+            cerr << "Error: WPS analysis needs a maximum work amount that is greater than the minimum" << endl;
+            return 2;
+        }
         info_log << "WPS analysis enabled";
     } else if ((size_t)-1 != g_duration_col && vm.count("work-amount")) {
-        pilot_set_wps_analysis(g_wl.get(), NULL, true, false);
+        // The WPS analysis is extra here, so we go on without it if the
+        // work amount cannot change.
+        if (0 != pilot_set_wps_analysis(g_wl.get(), NULL, true, false)) {
+            warning_log << "The work amount cannot change, doing no WPS analysis";
+            pilot_set_wps_analysis(g_wl.get(), NULL, false, false);
+        }
     } else {
         pilot_set_wps_analysis(g_wl.get(), NULL, false, false);
     }
@@ -622,7 +646,7 @@ int handle_run_program(int argc, const char** argv) {
             vector<string> var;
             boost::split(var, s, boost::is_any_of("="));
             if(var.size() != 2) {
-                cerr << "Environment variable must be in 'NAME=VALUE' format";
+                cerr << "Error: environment variable must be in 'NAME=VALUE' format" << endl;
                 return 2;
             }
             setenv(var[0].c_str(), var[1].c_str(), true);

@@ -21,6 +21,24 @@ Performance Indices (PIs) from its output.
 
 The ``--`` is required to separate Pilot's options from the workload command.
 
+**Columns.** The workload prints one line for each round, and Pilot splits
+the line into columns, which are numbered from 0. The same rules apply to
+the lines of the CSV files that ``bench analyze`` and
+``bench detect_changepoint_edm`` read.
+
+* Columns are separated by a comma or by whitespace.
+* Whitespace next to a comma is part of the separator: ``1, 2`` has two
+  columns.
+* Whitespace at the beginning and at the end of the line is ignored.
+* Only commas make an empty column: ``1,,2`` has three columns, of which
+  column 1 is empty.
+
+.. note::
+
+   Until September 2026 every space and tab made a column of its own, so
+   ``1, 2`` had three columns and the 2 was column 2. A column number that
+   was chosen to get past such empty columns has to be changed.
+
 **Macros** substituted in the workload command before each round:
 
 .. list-table::
@@ -70,7 +88,8 @@ Options
    * - ``--duration-col <col>``
      - ``-d``
      - Zero-based column index of the round duration (in seconds) in the
-       workload's CSV output. Required for WPS analysis (``--wps``). Pilot
+       workload's CSV output. Required for WPS analysis, which is done when
+       ``--wps`` is set and also when there is no ``--pi``. Pilot
        uses this duration, not the time it takes to run the workload
        program, which includes starting the program. If the duration is 0,
        Pilot uses the time it measured. The session fails if the column is
@@ -127,13 +146,17 @@ Options
    * - ``--work-amount <min,max>``
      - ``-w``
      - Valid work-amount range. Pilot will vary the work amount between
-       ``min`` and ``max`` across rounds. Required when using ``--wps``.
+       ``min`` and ``max`` across rounds. Required for WPS analysis, which
+       is done when ``--wps`` is set and also when there is no ``--pi``.
+       ``max`` has to be greater than ``min`` for WPS analysis.
    * - ``--wps``
      -
      - Enable Work-Per-Second linear regression analysis. Requires
        ``--duration-col`` and ``--work-amount``. Detects and removes
        warm-up and cool-down phases automatically. See
-       :doc:`features/warm-up-and-cool-down-phase-detection`.
+       :doc:`features/warm-up-and-cool-down-phase-detection`. When there
+       is no ``--pi`` the WPS analysis is all that there is to do, so it is
+       enabled and has to converge whether ``--wps`` is set or not.
 
 
 bench analyze
