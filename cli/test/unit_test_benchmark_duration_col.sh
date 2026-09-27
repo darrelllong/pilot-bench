@@ -51,6 +51,8 @@ set -euo pipefail
 
 TMPFILE=`mktemp`
 OUTPUT_DIR=`mktemp -d -u`
+OUTPUT_DIR2=`mktemp -d -u`
+trap 'rm -rf "$TMPFILE" "$OUTPUT_DIR" "$OUTPUT_DIR2"' EXIT
 ./bench run_program --preset quick -d 1 --wps -w 100,2000 --session-limit 120 \
     -o ${OUTPUT_DIR} -- ./mock_benchmark_with_duration.sh %WORK_AMOUNT% >"$TMPFILE" 2>&1
 
@@ -67,9 +69,8 @@ grep -q "^WPS v: 20$" "$TMPFILE"
 
 # a column that the client program doesn't print
 if ./bench run_program -d 2 --wps -w 100,2000 --session-limit 120 \
-    -- ./mock_benchmark_with_duration.sh %WORK_AMOUNT% >"$TMPFILE" 2>&1; then
+    -o ${OUTPUT_DIR2} -- ./mock_benchmark_with_duration.sh %WORK_AMOUNT% >"$TMPFILE" 2>&1; then
     exit 1
 fi
 grep -q "Cannot find the round duration (column 2)" "$TMPFILE"
-
-rm -rf "$TMPFILE" "${OUTPUT_DIR}"
+rm -rf "${OUTPUT_DIR2}"

@@ -93,7 +93,7 @@ std::vector<ResultType> extract_csv_fields(const std::string &csvstr,
     vector<ResultType> r(columns.size());
     for (size_t i = 0; i < columns.size(); ++i) {
         int col = columns[i];
-        if (col >= static_cast<int>(pidata_strs.size())) {
+        if (col < 0 || col >= static_cast<int>(pidata_strs.size())) {
             throw runtime_error("Malformed line");
         }
         r[i] = lexical_cast<ResultType>(pidata_strs[col]);
@@ -102,12 +102,20 @@ std::vector<ResultType> extract_csv_fields(const std::string &csvstr,
 }
 
 /**
+ * The longest round duration that the client program can report, which is
+ * ten years. It keeps a number that is not a duration, such as a throughput
+ * in bytes per second, from getting into the analysis.
+ */
+const double MAX_ROUND_DURATION_IN_SEC = 10.0 * 366 * 24 * 3600;
+
+/**
  * \brief Get the round duration from the output of the client program
  * @param[in] prog_stdout the output of the client program
  * @param duration_col the column (0-based) of the round duration in seconds
- * @param[out] round_duration the round duration in nanoseconds
+ * @param[out] round_duration the round duration in nanoseconds. It is 0 only
+ * if the client program reported 0.
  * @return 0 on success; ERR_WL_FAIL if the column doesn't exist or is not a
- * valid duration
+ * valid duration, in which case round_duration is not changed
  */
 int parse_round_duration(const std::string &prog_stdout, size_t duration_col,
                          boost::timer::nanosecond_type *round_duration);

@@ -61,41 +61,32 @@ Option 1: Analyzing the Round Duration (Recommended)
 The WPS method (see :doc:`../features/warm-up-and-cool-down-phase-detection`)
 needs the round duration and work amount for each run. Write a wrapper script
 that runs ``dd`` with a variable I/O count and prints only the duration in
-seconds:
-
-**Linux** (``examples/benchmark_dd/run_dd.sh``):
+seconds. ``examples/benchmark_dd/run_dd.sh`` works on Linux and on macOS:
 
 .. code-block:: bash
 
    #!/usr/bin/env bash
    set -euo pipefail
 
-   OUTPUT_FILE="$1"
-   IO_COUNT="$2"
+   OUTPUT_FILE=$1
+   IO_COUNT=$2
 
-   dd if=/dev/zero of="$OUTPUT_FILE" bs=1M count="$IO_COUNT" 2>&1 | \
-       awk '/bytes.*copied/ { print $NF }'
+   # GNU: "104857600 bytes (105 MB, 100 MiB) copied, 0.0452 s, 2.3 GB/s"
+   # BSD: "104857600 bytes transferred in 0.015194 secs (690127811 bytes/sec)"
+   LC_ALL=C dd if=/dev/zero of="$OUTPUT_FILE" bs=1048576 count="$IO_COUNT" 2>&1 | \
+       awk '/ copied, /              { print $(NF-3); found = 1 }
+            / bytes transferred in / { print $5;      found = 1 }
+            END                      { exit !found }'
    # Prints the elapsed time in seconds, e.g.: 0.123456
 
-**macOS** (``examples/benchmark_dd/run_dd_mac.sh``):
-
-.. code-block:: bash
-
-   #!/usr/bin/env bash
-   set -euo pipefail
-
-   OUTPUT_FILE="$1"
-   IO_COUNT="$2"
-
-   dd if=/dev/zero of="$OUTPUT_FILE" bs=1m count="$IO_COUNT" 2>&1 | \
-       awk '/bytes transferred/ { print $5 }'
-   # Prints the elapsed time in seconds, e.g.: 0.123456
+``bench`` takes this number as the duration of the round. It fails the
+session if the column is not a number, so test the script first.
 
 Make the script executable:
 
 .. code-block:: bash
 
-   chmod +x run_dd.sh   # or run_dd_mac.sh on macOS
+   chmod +x run_dd.sh
 
 Test it manually first to confirm it prints a single number:
 

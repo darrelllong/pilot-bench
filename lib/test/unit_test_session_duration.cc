@@ -57,6 +57,7 @@
 #include <cmath>
 #include <cstring>
 #include "gtest/gtest.h"
+#include <limits>
 #include <memory>
 #include "pilot/libpilot.h"
 #include <vector>
@@ -320,6 +321,76 @@ TEST(PilotRunWorkloadTest, WPSNotEnoughRoundsLongerThanNegativeAlpha) {
     }
     auto ar = mock_wps_analysis(wl);
     ASSERT_FALSE(ar->wps_has_data);
+    pilot_destroy_workload(wl);
+}
+
+static int mock_short_workload_func(const pilot_workload_t *wl,
+                                    size_t round,
+                                    size_t total_work_amount,
+                                    pilot_malloc_func_t *lib_malloc_func,
+                                    size_t *num_of_work_unit,
+                                    double ***unit_readings,
+                                    double **readings,
+                                    nanosecond_type *round_duration, void *data) {
+    // Doesn't set round_duration so Pilot has to measure it. Each round is
+    // about 1 ms longer than the round before it.
+    *num_of_work_unit = 0;
+    *unit_readings = NULL;
+    *readings = NULL;
+    if (8 == round)
+        return 1;
+    auto end = chrono::steady_clock::now() + chrono::microseconds(1500 + 1000 * round);
+    while (chrono::steady_clock::now() < end)
+        ;
+    return 0;
+}
+
+static bool mock_always_more_rounds_hook(const pilot_workload_t* wl, size_t *needed_work_amount) {
+    *needed_work_amount = 1000;
+    return true;
+}
+
+TEST(PilotRunWorkloadTest, ResolutionOfMeasuredRoundDuration) {
+    pilot_set_log_level(lv_no_show);
+    pilot_workload_t *wl = pilot_new_workload("Test workload");
+    pilot_set_work_amount_limit(wl, 1000);
+    pilot_set_init_work_amount(wl, 1000);
+    pilot_set_wps_analysis(wl, NULL, false, false);
+    pilot_set_short_round_detection_threshold(wl, 0);
+    pilot_set_workload_func(wl, mock_short_workload_func);
+    // keeps running until the workload func fails at round 8
+    pilot_set_next_round_work_amount_hook(wl, mock_always_more_rounds_hook);
+    ASSERT_EQ(ERR_WL_FAIL, pilot_run_workload(wl));
+    ASSERT_EQ(8, wl->round_durations_.size());
+    for (size_t i = 0; i < wl->round_durations_.size(); ++i) {
+        // A clock that has a resolution of 10 ms would give 0 or 10 ms
+        ASSERT_GE(wl->round_durations_[i], nanosecond_type(1500000 + 1000000 * i)) << "round " << i;
+        ASSERT_NE(0, wl->round_durations_[i] % 10000000) << "round " << i;
+    }
+    pilot_destroy_workload(wl);
+}
+
+TEST(PilotRunWorkloadTest, WPSLongRounds) {
+    pilot_workload_t *wl = new_mock_wps_workload();
+    // 40 rounds of about nine years each. The sum of their durations,
+    // 1.1e19 ns, doesn't fit in nanosecond_type.
+    const double exp_alpha = 4;
+    const double exp_v = 1.5;
+    const size_t base_wa = 425000000;
+    double sum_wa = 0, sum_dur = 0;
+    for (int i = 0; i < 4; ++i) {
+        for (size_t wa : g_mock_wps_work_amounts) {
+            add_mock_round(wl, base_wa + wa * 1000, exp_alpha + (base_wa + wa * 1000) / exp_v);
+            sum_wa += double(wl->round_work_amounts_.back());
+            sum_dur += double(wl->round_durations_.back()) / ONE_SECOND;
+        }
+    }
+    ASSERT_GT(sum_dur * ONE_SECOND, double(std::numeric_limits<nanosecond_type>::max()));
+    auto ar = mock_wps_analysis(wl);
+    ASSERT_NEAR(sum_wa / sum_dur, ar->wps_harmonic_mean, 1e-9);
+    ASSERT_NEAR(exp_v, ar->wps_harmonic_mean, 1e-6);
+    ASSERT_TRUE(ar->wps_has_data);
+    ASSERT_NEAR(exp_v, ar->wps_v, 1e-6);
     pilot_destroy_workload(wl);
 }
 

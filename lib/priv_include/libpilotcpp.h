@@ -391,8 +391,10 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
     std::vector<double> subsession_work_amounts;
     std::vector<double> subsession_round_durations;
 
-    size_t subsession_sum_wa = 0;
-    nanosecond_type subsession_sum_dur = 0;
+    // The sums are in double because the sum of large work amounts or long
+    // durations doesn't fit in an integer.
+    double subsession_sum_wa = 0;
+    double subsession_sum_dur = 0;
     // convert input into subsession data by averaging every q samples. We
     // have to use the mean, not the sum: the sum of q rounds has an
     // intercept of q * alpha, not the alpha of a round.
@@ -400,8 +402,8 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
         subsession_sum_wa  += round_work_amounts[i];
         subsession_sum_dur += round_durations[i];
         if (i % size_t(q) == size_t(q) - 1) {
-            subsession_work_amounts.push_back(static_cast<double>(subsession_sum_wa) / q);
-            subsession_round_durations.push_back(static_cast<double>(subsession_sum_dur) / q);
+            subsession_work_amounts.push_back(subsession_sum_wa / q);
+            subsession_round_durations.push_back(subsession_sum_dur / q);
             subsession_sum_wa = 0;
             subsession_sum_dur = 0;
         }

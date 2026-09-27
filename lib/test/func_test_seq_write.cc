@@ -43,6 +43,7 @@
 #include <boost/program_options.hpp>
 #include <boost/timer/timer.hpp>
 #include <fcntl.h>
+#include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <signal.h>
@@ -53,7 +54,6 @@
 using namespace pilot;
 using namespace std;
 namespace po = boost::program_options;
-using boost::timer::cpu_timer;
 using boost::timer::nanosecond_type;
 nanosecond_type const ONE_SECOND = 1000000000LL;
 size_t const MEGABYTE = 1024*1024;
@@ -111,7 +111,12 @@ int workload_func(const pilot_workload_t *wl,
     size_t my_work_amount = total_work_amount;
     size_t io_size;
     char *io_buf;
-    cpu_timer timer;
+    // the wall clock time of cpu_timer can have a resolution as low as 10 ms
+    auto start_time = chrono::steady_clock::now();
+    auto elapsed = [start_time]() -> nanosecond_type {
+        return chrono::duration_cast<chrono::nanoseconds>(
+                   chrono::steady_clock::now() - start_time).count();
+    };
     size_t unit_id = 0;
     while (my_work_amount > 0) {
         io_buf = g_io_buf;
@@ -145,14 +150,14 @@ int workload_func(const pilot_workload_t *wl,
             }
         }
         if (unit_id < *num_of_work_unit)
-            work_unit_elapsed_times[unit_id] = timer.elapsed().wall;
+            work_unit_elapsed_times[unit_id] = elapsed();
         ++unit_id;
     }
-    *round_duration = timer.elapsed().wall;
+    *round_duration = elapsed();
     // sync to make sure the cool down phase appear
     fsync(fd);
     close(fd);
-    // TODO: we need to move the "*round_duration = timer.elapsed().wall;" here
+    // TODO: we need to move the "*round_duration = elapsed();" here
     // and see if the result changes or not.
 
     // we do calculation after finishing the workload to minimize the overhead

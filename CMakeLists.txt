@@ -114,6 +114,8 @@ if (NOT PATCH_EXECUTABLE)
     message(FATAL_ERROR "patch is required to apply local portability patches to external dependencies.")
 endif ()
 find_program(PILOT_PYTHON_EXECUTABLE NAMES python3 python)
+# Ninja has to be told which files the external project makes, or it has no
+# rule for the libraries that the tests are linked with.
 ExternalProject_Add (gtest
   URL https://github.com/google/googletest/archive/release-1.8.0.zip
   URL_HASH SHA256=f3ed3b58511efd272eb074a3a6d6fb79d7c2e6a0e374323d1e6bcbcc1ef141bf
@@ -121,6 +123,8 @@ ExternalProject_Add (gtest
   CMAKE_ARGS -DCMAKE_POLICY_VERSION_MINIMUM=3.5
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE
   INSTALL_COMMAND ""
+  BUILD_BYPRODUCTS <BINARY_DIR>/googlemock/gtest/libgtest.a
+                   <BINARY_DIR>/googlemock/gtest/libgtest_main.a
 )
 ExternalProject_Get_Property(gtest SOURCE_DIR BINARY_DIR)
 set (GTEST_INCLUDE_DIR ${SOURCE_DIR}/googletest/include)

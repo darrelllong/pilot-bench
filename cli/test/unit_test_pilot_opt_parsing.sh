@@ -146,6 +146,11 @@ run ./bench run_program -v --pi "throughput,MB/s,2,1,0:latency,ms,3,0:threads,,4
 
 run ./bench run_program -v --pi "throughput,MB/s,2,1:latency,ms,3,0,0:threads,,4,0" -- true 2>&1 | grep -q "Error: at least one PI needs to have must_satisfy set."
 
+# The duration column has to be a column
+run ./bench run_program -d -1 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+run ./bench run_program -d -2 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+run ./bench run_program -d 4294967296 -w "100,200" -- true 2>&1 | grep -q "Error: invalid duration column"
+
 # Try to run a workload that accepts work amount from 100 to 200.
 # "-d 0" designates that the first column is the round duration.
 rm -f /tmp/work_amount_log.txt

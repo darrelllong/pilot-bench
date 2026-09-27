@@ -67,6 +67,13 @@ TEST(PilotCLIUnitTest, ExtractCSVFields) {
     ASSERT_DOUBLE_EQ(14, results2[1]);
 }
 
+TEST(PilotCLIUnitTest, ExtractCSVFieldsWrongColumn) {
+    string s = "665.921,57.1027,0.134727";
+    ASSERT_THROW(extract_csv_fields<double>(s, vector<int>{3}), runtime_error);
+    ASSERT_THROW(extract_csv_fields<double>(s, vector<int>{-1}), runtime_error);
+    ASSERT_THROW(extract_csv_fields<double>(s, vector<int>{-2}), runtime_error);
+}
+
 TEST(PilotCLIUnitTest, ParseRoundDuration) {
     boost::timer::nanosecond_type d = 42;
     ASSERT_EQ(0, parse_round_duration("0.132891", 0, &d));
@@ -78,6 +85,14 @@ TEST(PilotCLIUnitTest, ParseRoundDuration) {
     ASSERT_EQ(1000000001, d);
     ASSERT_EQ(0, parse_round_duration("0", 0, &d));
     ASSERT_EQ(0, d);
+    // Only 0 is 0. libpilot takes 0 as not reported.
+    ASSERT_EQ(0, parse_round_duration("1e-10", 0, &d));
+    ASSERT_EQ(1, d);
+    ASSERT_EQ(0, parse_round_duration("4e-10", 0, &d));
+    ASSERT_EQ(1, d);
+    // ten years
+    ASSERT_EQ(0, parse_round_duration("316224000", 0, &d));
+    ASSERT_EQ(316224000LL * 1000000000LL, d);
 }
 
 TEST(PilotCLIUnitTest, ParseRoundDurationError) {
@@ -92,6 +107,9 @@ TEST(PilotCLIUnitTest, ParseRoundDurationError) {
     ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("nan", 0, &d));
     ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("inf", 0, &d));
     ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("1e10", 0, &d));
+    // more than ten years. This one is a throughput in bytes per second.
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("316224001", 0, &d));
+    ASSERT_EQ(pilot::ERR_WL_FAIL, parse_round_duration("690127811", 0, &d));
     // the output must not be touched
     ASSERT_EQ(42, d);
 }

@@ -242,15 +242,18 @@ int parse_round_duration(const std::string &prog_stdout, size_t duration_col,
                   << ") in client program's output: " << prog_stdout;
         return ERR_WL_FAIL;
     }
-    double duration_in_ns = duration_in_sec * pilot::ONE_SECOND;
     // this also catches NaN
-    if (!(duration_in_ns >= 0 &&
-          duration_in_ns < static_cast<double>(std::numeric_limits<nanosecond_type>::max()))) {
+    if (!(duration_in_sec >= 0 && duration_in_sec <= MAX_ROUND_DURATION_IN_SEC)) {
         fatal_log << "Invalid round duration (" << duration_in_sec
                   << " s) in client program's output: " << prog_stdout;
         return ERR_WL_FAIL;
     }
-    *round_duration = static_cast<nanosecond_type>(llround(duration_in_ns));
+    nanosecond_type duration = static_cast<nanosecond_type>(llround(duration_in_sec * pilot::ONE_SECOND));
+    // libpilot takes 0 as not reported, which a duration greater than 0
+    // must not become
+    if (0 == duration && duration_in_sec > 0)
+        duration = 1;
+    *round_duration = duration;
     return 0;
 }
 
@@ -478,6 +481,12 @@ int handle_run_program(int argc, const char** argv) {
 
     if (vm.count("duration-col")) {
         g_duration_col = vm["duration-col"].as<size_t>();
+        // This also rejects negative numbers, which wrap around. -1 would be
+        // taken as not set.
+        if (g_duration_col > static_cast<size_t>(std::numeric_limits<int>::max())) {
+            cerr << "Error: invalid duration column" << endl;
+            return 2;
+        }
         info_log << "Setting duration column to " << g_duration_col;
     }
 

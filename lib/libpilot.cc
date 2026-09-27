@@ -61,6 +61,7 @@
 #include <boost/math/distributions/students_t.hpp>
 #include <boost/shared_ptr.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cstdarg>
 #include <cstdlib>
 #include <sys/stat.h>
@@ -81,8 +82,17 @@
 using namespace pilot;
 using namespace std;
 using boost::format;
-using boost::timer::cpu_timer;
 using boost::timer::nanosecond_type;
+
+/**
+ * \brief The current time of a monotonic clock in nanoseconds
+ * \details We don't use the wall clock time of boost::timer::cpu_timer
+ * because its resolution can be as low as 10 ms.
+ */
+static inline nanosecond_type monotonic_time(void) {
+    return chrono::duration_cast<chrono::nanoseconds>(
+               chrono::steady_clock::now().time_since_epoch()).count();
+}
 
 extern vector<int> EDM_percent(const double *Z, int n, int min_size, double percent, int degree);
 
@@ -318,7 +328,7 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
     size_t num_of_unit_readings;
     double **unit_readings;
     double *readings;
-    unique_ptr<cpu_timer> round_timer;
+    nanosecond_type round_start_time;
 
     // ready to start the workload
     size_t work_amount;
@@ -361,11 +371,11 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
         reported_round_duration = 0;
         readings = NULL;
         unit_readings = NULL;
-        round_timer.reset(new cpu_timer);
+        round_start_time = monotonic_time();
         int rc = wl->workload_func_(wl, wl->rounds_, work_amount, &pilot_malloc_func,
                                     &num_of_unit_readings, &unit_readings,
                                     &readings, &reported_round_duration, wl->workload_data_);
-        measured_round_duration = round_timer->elapsed().wall;
+        measured_round_duration = monotonic_time() - round_start_time;
         info_log << "Finished workload round " << wl->rounds_;
         round_duration = reported_round_duration == 0 ? measured_round_duration : reported_round_duration;
 
@@ -389,9 +399,8 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
 
         //! TODO validity check: if (wl->short_workload_check_) ...
         // Get the total_elapsed_time and avg_time_per_unit = total_elapsed_time / num_of_work_units.
-        // If avg_time_per_unit is not at least 100 times longer than the CPU time resolution then
-        // the results cannot be used. See FB#2808 and
-        // http://www.boost.org/doc/libs/1_59_0/libs/timer/doc/cpu_timers.html
+        // If avg_time_per_unit is not at least 100 times longer than the resolution of the clock
+        // then the results cannot be used. See FB#2808.
 
         // move all data into the permanent location
         pilot_import_benchmark_results(wl, wl->rounds_, work_amount,
@@ -1909,12 +1918,11 @@ int _simple_workload_func_runner(const pilot_workload_t *wl,
     (*unit_readings)[0] = (double*)lib_malloc_func(sizeof(double) * *num_of_work_unit);
 
     int rc;
-    cpu_timer timer;
     nanosecond_type start_time, end_time;
     for (size_t i = 0; i != total_work_amount; ++i) {
-        start_time = timer.elapsed().wall;
+        start_time = monotonic_time();
         rc = func();
-        end_time = timer.elapsed().wall;
+        end_time = monotonic_time();
         (*unit_readings)[0][i] = double((end_time - start_time)) / ONE_SECOND;
         if (rc)
             return rc;

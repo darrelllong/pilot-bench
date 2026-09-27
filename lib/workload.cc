@@ -572,11 +572,13 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
         return;
     }
     // calculate naive_v
-    size_t sum_of_work_amount =
-            accumulate(round_work_amounts_.begin(), round_work_amounts_.end(), static_cast<size_t>(0));
-    nanosecond_type sum_of_round_durations =
-            accumulate(round_durations_.begin(), round_durations_.end(), static_cast<nanosecond_type>(0));
-    analytical_result_.wps_harmonic_mean = double(sum_of_work_amount) / ( double(sum_of_round_durations) / ONE_SECOND );
+    // The sums are in double because the sum of many large work amounts or
+    // long durations doesn't fit in an integer.
+    double sum_of_work_amount =
+            accumulate(round_work_amounts_.begin(), round_work_amounts_.end(), 0.0);
+    double sum_of_round_durations =
+            accumulate(round_durations_.begin(), round_durations_.end(), 0.0);
+    analytical_result_.wps_harmonic_mean = sum_of_work_amount / ( sum_of_round_durations / ONE_SECOND );
     analytical_result_.wps_harmonic_mean_formatted = format_wps(analytical_result_.wps_harmonic_mean);
     // The error of naive_v is calculated from the same rounds as the error
     // of the WPS regression, which are the rounds longer than the duration
@@ -632,6 +634,9 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
             analytical_result_.wps_alpha = -1;
             analytical_result_.wps_v = -1;
             analytical_result_.wps_v_ci = -1;
+            // an earlier regression of this analysis may have set them
+            analytical_result_.wps_err = -1;
+            analytical_result_.wps_err_percent = -1;
             return;
         }
         if (!(analytical_result_.wps_v > 0)) {
@@ -640,6 +645,8 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
             analytical_result_.wps_alpha = -1;
             analytical_result_.wps_v = -1;
             analytical_result_.wps_v_ci = -1;
+            analytical_result_.wps_err = -1;
+            analytical_result_.wps_err_percent = -1;
             return;
         }
 
@@ -651,6 +658,8 @@ void pilot_workload_t::refresh_wps_analysis_results(void) const {
                 analytical_result_.wps_alpha = -1;
                 analytical_result_.wps_v = -1;
                 analytical_result_.wps_v_ci = -1;
+                analytical_result_.wps_err = -1;
+                analytical_result_.wps_err_percent = -1;
                 return;
             }
             if (static_cast<nanosecond_type>(alpha_threshold) > duration_threshold) {
@@ -851,7 +860,7 @@ double pilot_workload_t::duration_to_work_amount_ratio(void) const {
 
 size_t pilot_workload_t::get_round_work_amount_soft_limit(void) const {
     if (0 == round_work_amounts_.size()) return max_work_amount_;
-    size_t sum_work_amount = std::accumulate(round_work_amounts_.begin(), round_work_amounts_.end(), 0);
+    size_t sum_work_amount = std::accumulate(round_work_amounts_.begin(), round_work_amounts_.end(), static_cast<size_t>(0));
     size_t avg_work_amount = sum_work_amount / round_work_amounts_.size();
     return min(round_work_amount_to_avg_amount_limit_ * avg_work_amount, max_work_amount_);
 }

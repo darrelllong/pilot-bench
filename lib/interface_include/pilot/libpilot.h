@@ -253,7 +253,7 @@ typedef bool next_round_work_amount_hook_t(const pilot_workload_t* wl, size_t *n
  * @param[in] wl pointer to the workload struct
  * @param f the new hook function
  */
-void pilot_set_next_round_work_amount_hook(pilot_workload_t* wl, next_round_work_amount_hook_t *f) NOEXCEPT;
+DLL_PUBLIC void pilot_set_next_round_work_amount_hook(pilot_workload_t* wl, next_round_work_amount_hook_t *f) NOEXCEPT;
 
 /**
  * \brief Type for the general hook functions
@@ -561,7 +561,7 @@ DLL_PUBLIC const char* pilot_get_last_log_lines(size_t n DEFAULT_VALUE(1)) NOEXC
  * \brief Get the logging level of the library
  * @return log_level
  */
-pilot_log_level_t pilot_get_log_level(void) NOEXCEPT;
+DLL_PUBLIC pilot_log_level_t pilot_get_log_level(void) NOEXCEPT;
 
 DLL_PUBLIC double pilot_subsession_mean_p(const double *data, size_t n, pilot_mean_method_t mean_method) NOEXCEPT;
 
