@@ -854,12 +854,77 @@ pilot_optimal_sample_size_p(const double *data, size_t n,
 #define MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE (30)
 
 /**
+ * The significance level of changepoint detection. It is divided by the
+ * number of readings. How often a changepoint is reported where there is
+ * none, and how often one that is there is found, were measured for this
+ * level with lib/test/changepoint_rates.cc. The numbers are in
+ * doc/features/warm-up-and-cool-down-phase-detection.rst.
+ */
+#define CHANGEPOINT_SIGNIFICANCE_LEVEL (0.01)
+
+/**
+ * \brief The rank-sum test (Wilcoxon, Mann and Whitney) of two samples
+ * \details If all the values are different, the p-value is exact, from the
+ * number of ways in which the ranks can be dealt. When that calculation is
+ * too large the normal approximation is used, which is not less than the
+ * exact value in the tail.
+ *
+ * Values that are the same have no order. If there are few of them, the
+ * ranks of values that are the same are dealt in the way that is the least
+ * in favor of a difference, so the p-value is not less than that of any
+ * order in which they could be put. If there are many, as in readings that
+ * have few different values, the values are put in two classes that are as
+ * equal in size as they can be, and the test is Fisher's exact test, which
+ * is exact for the two classes. For samples of 0 and 1 this is the exact
+ * test of two proportions. Both lose power when many values are the same.
+ * See
+ * doc/features/warm-up-and-cool-down-phase-detection.rst.
+ * @param[in] a the first sample
+ * @param na the size of the first sample
+ * @param[in] b the second sample
+ * @param nb the size of the second sample
+ * @return the two-sided p-value; 1 if one of the samples is empty, if all
+ * values are the same, or if a value is not a number
+ */
+DLL_PUBLIC double pilot_rank_sum_test(const double *a, size_t na, const double *b, size_t nb) NOEXCEPT;
+
+/**
+ * \brief If it is time to look for changepoints in the readings of a session
+ * \details The detection looks at all the readings, so the time of doing it
+ * after every round grows with the square of the number of rounds. It is
+ * done after every round until there are 200 readings, and then when there
+ * are 1% more readings than the last time.
+ * @param n the number of readings
+ * @param last_n the number of readings when the detection was last done
+ * @return true if the detection should be done
+ */
+DLL_PUBLIC bool pilot_changepoint_detection_is_due(size_t n, size_t last_n) NOEXCEPT;
+
+/**
+ * \brief Set the significance level of changepoint detection
+ * \details The level is for the whole library, not for one workload.
+ * @param significance_level the new level, which has to be in (0, 1). The
+ * level is not changed if it is not.
+ * @return the level before the call
+ */
+DLL_PUBLIC double pilot_set_changepoint_significance_level(double significance_level) NOEXCEPT;
+
+/**
  * \brief Detect changepoint of mean in data
+ * \details Changepoints are proposed by binary segmentation, and a proposed
+ * changepoint is kept only if the rank-sum test on the subsession means of
+ * the two segments next to it rejects that they are the same. No
+ * segment is shorter than MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE, so there can
+ * be no changepoint in fewer than twice as many readings.
  * Use pilot_free() to free the memory you get in changepoints
  * @param[in] data input data
  * @param n size of input data
- * @param[out] changepoints the detected points
+ * @param[out] changepoints the detected points. A changepoint is the index
+ * of the first reading of a segment.
  * @param[out] cp_n the number of changepoints
+ * @param percent not used. It was the penalty of E-Divisive with Medians,
+ * which reported changepoints in data that have none.
+ * @param degree not used
  * @return 0 on success; otherwise error code
  */
 DLL_PUBLIC int pilot_changepoint_detection(const double *data, size_t n,
@@ -872,9 +937,9 @@ DLL_PUBLIC int pilot_changepoint_detection(const double *data, size_t n,
  * has to contain more than 50\% of total samples.
  * @param data
  * @param n
- * @param min_size
- * @param percent
- * @param degree
+ * @param min_size the size of the shortest segment
+ * @param percent not used, see pilot_changepoint_detection()
+ * @param degree not used
  * @param begin
  * @param end
  * @return 0 on success, otherwise error code
@@ -884,11 +949,14 @@ DLL_PUBLIC int pilot_find_dominant_segment(const double *data, size_t n, size_t 
         double percent DEFAULT_VALUE(0.25), int degree DEFAULT_VALUE(1)) NOEXCEPT;
 
 /**
- * Use EDM tail method to find one changepoint
+ * Find the last changepoint, see pilot_changepoint_detection()
  * @param data
  * @param n
  * @param [out] loc for storing the detected changepoint
- * @return 0 on success, otherwise error code
+ * @param percent not used
+ * @param degree not used
+ * @return 0 on success; ERR_NO_CHANGEPOINT if there is no changepoint;
+ * otherwise error code
  */
 DLL_PUBLIC int pilot_find_one_changepoint(const double *data, size_t n, size_t *loc,
                                double percent DEFAULT_VALUE(0.25), int degree DEFAULT_VALUE(1)) NOEXCEPT;

@@ -31,9 +31,10 @@ To achieve these goals, Pilot provides the following functions:
 
 To learn how to use Pilot, head to the :doc:`tutorial-list`.
 
-Pilot is written in C++ for fast in-place analysis and is released under a
-dual BSD 3-clause and GPLv2+ license. It compiles on major Linux
-distributions and macOS.
+Pilot is written in C++ for fast in-place analysis and is released under the
+GNU Lesser General Public License version 2.1. Commit 0332289, of January
+2017, and the commits before it were released under a BSD 3-clause license.
+It compiles on major Linux distributions and macOS.
 
 For questions and discussion, please open an issue on
 `GitHub <https://github.com/darrelllong/pilot-bench/issues>`_.
@@ -126,6 +127,11 @@ The following changes have been made:
 * **Code and test quality improvements**: probe scripts are hardened,
   suppression-style wording has been removed from the codebase, and
   portability fixes have been applied.
+
+* **Statistical methods**: change-point detection has been replaced, and
+  defects of the WPS analysis, of the comparison of results, and of the
+  measurement of time have been fixed. Some of what Pilot does now is not
+  what the paper describes. See :doc:`changelog`.
 
 .. [hoefler:sc15] Torsten Hoefler and Roberto Belli. Scientific
                   benchmarking of parallel computing systems. In

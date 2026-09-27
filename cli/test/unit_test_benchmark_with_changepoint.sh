@@ -48,11 +48,21 @@
 # OF THE POSSIBILITY OF SUCH DAMAGE.
 set -euo pipefail
 
+# bench saves the results in the current directory if it is not given one
+RESULT_DIR=`mktemp -d`
 TMPFILE=`mktemp`
-rm -f /tmp/pilot_mock_benchmark_cp_round.txt
-./bench run_program --ci-perc 0.3 --min-sample-size 80 --pi "response time,ms,0,0,1" \
-    -- ./mock_benchmark_with_changepoint.sh >"$TMPFILE" 2>&1
+trap 'rm -rf "$RESULT_DIR" "$TMPFILE"' EXIT
 
+# The mock benchmark has a warm-up of 40 rounds and then the data of
+# mock_benchmark.sh. Pilot has to find the changepoint and leave the warm-up
+# out, so the results are those of unit_test_benchmark.sh.
+rm -f /tmp/pilot_mock_benchmark_cp_round.txt
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" \
+    -- ./mock_benchmark_with_changepoint.sh >"$TMPFILE" 2>&1
+rm -f /tmp/pilot_mock_benchmark_cp_round.txt
+
+grep -q "changepoint in readings detected at 40" "$TMPFILE"
+grep -q "Rounds: 84" "$TMPFILE"
 grep -q "response time: R m1.725 c0.2839 v0.04466" "$TMPFILE"
 grep -q "\[PI 0\] Reading mean: 1.725 ms" "$TMPFILE"
 grep -q "\[PI 0\] Reading CI: 0.2839 ms" "$TMPFILE"

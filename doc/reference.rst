@@ -216,8 +216,12 @@ Options
 bench detect_changepoint_edm
 -----------------------------
 
-Run E-Divisive with Medians (EDM) change-point detection on a time series
-and print the detected change-point indices.
+Run change-point detection on a time series and print the detected
+change-point indices. A change-point is the index, from 0, of the first
+reading of a segment. See
+:doc:`features/warm-up-and-cool-down-phase-detection` for the method. The
+command has "edm" in its name because it used E-Divisive with Medians until
+September 2026.
 
 .. code-block:: none
 
@@ -247,11 +251,8 @@ Options
      - Skip the first ``n`` lines of the file.
    * - ``--percent <value>``
      - ``-p``
-     - Penalization constant controlling sensitivity to new change-points.
-       Specifies the minimum fractional increase in the goodness-of-fit
-       statistic required to accept an additional change-point. Default:
-       ``0.25`` (25% increase required). Lower values detect more
-       change-points; higher values detect fewer.
+     - Not used any more, and will be removed. It was the penalization
+       constant of E-Divisive with Medians.
    * - ``--quiet``
      - ``-q``
      - Suppress informational output.

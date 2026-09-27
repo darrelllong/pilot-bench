@@ -93,6 +93,10 @@ add_custom_target(copy_test_files ALL
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_long_lines.sh $<TARGET_FILE_DIR:bench>
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_benchmark_with_changepoint.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_with_changepoint.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_with_work_amount.sh $<TARGET_FILE_DIR:bench>
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_with_duration.sh $<TARGET_FILE_DIR:bench>
@@ -120,6 +124,8 @@ add_test (NAME unit_test_benchmark_duration_col
           COMMAND unit_test_benchmark_duration_col.sh)
 add_test (NAME unit_test_benchmark_long_lines
           COMMAND unit_test_benchmark_long_lines.sh)
+add_test (NAME unit_test_benchmark_with_changepoint
+          COMMAND unit_test_benchmark_with_changepoint.sh)
 add_test (NAME unit_test_cli
 		  COMMAND unit_test_cli)
 if (WITH_LUA)

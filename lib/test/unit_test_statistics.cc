@@ -50,10 +50,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <fstream>
 #include "gtest/gtest.h"
 #include "pilot/libpilot.h"
+#include "pilot/pilot_random.hpp"
 #include <vector>
 
 using namespace pilot;
@@ -517,10 +519,303 @@ TEST(StatisticsUnitTest, FindDominantSegment) {
     for (int i = 0; i < 30; ++i)
         data.push_back(1.1);
     ASSERT_EQ(0, pilot_find_dominant_segment(data.data(), data.size(), &begin, &end));
-    // due to the quirks of EDM, these changepoints are approximate, thus the
-    // 30, 131 here don't have special meanings but just the output of EDM
     ASSERT_EQ(30, begin);
-    ASSERT_EQ(131, end);
+    ASSERT_EQ(160, end);
+}
+
+static size_t count_changepoints(const vector<double> &data) {
+    int *changepoints = NULL;
+    size_t cp_n = 42;
+    EXPECT_EQ(0, pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n));
+    pilot_free(changepoints);
+    return cp_n;
+}
+
+TEST(StatisticsUnitTest, NoChangepointInIndependentReadings) {
+    // E-Divisive with Medians, which we used before, reported a changepoint
+    // in every sample of 60 or more readings
+    for (size_t n : {60, 100, 300, 1000}) {
+        for (uint64_t seed = 1; seed <= 25; ++seed) {
+            pcg64_t rng(static_cast<uint64_t>(seed * 1000 + n));
+            vector<double> normal, exponential, lognormal;
+            for (size_t i = 0; i < n; ++i) {
+                normal.push_back(100 + 5 * rng.normal());
+                exponential.push_back(rng.exponential());
+                lognormal.push_back(exp(rng.normal()));
+            }
+            ASSERT_EQ(0, count_changepoints(normal)) << "normal, n " << n << ", seed " << seed;
+            ASSERT_EQ(0, count_changepoints(exponential)) << "exponential, n " << n << ", seed " << seed;
+            ASSERT_EQ(0, count_changepoints(lognormal)) << "lognormal, n " << n << ", seed " << seed;
+        }
+    }
+}
+
+TEST(StatisticsUnitTest, FewChangepointsInAutocorrelatedReadings) {
+    // First-order autoregressive processes that have no change. A changepoint
+    // is reported in about 0.5% of such samples; this test allows 2 in 50.
+    size_t samples = 0, reported = 0;
+    for (double rho : {0.5, 0.8}) {
+        for (uint64_t seed = 1; seed <= 25; ++seed) {
+            pcg64_t rng(static_cast<uint64_t>(seed * 77 + static_cast<uint64_t>(rho * 10)));
+            vector<double> data;
+            double x = rng.normal();
+            for (size_t i = 0; i < 1200; ++i) {
+                x = rho * x + sqrt(1 - rho * rho) * rng.normal();
+                // the first 200 are for the process to forget where it began
+                if (i >= 200)
+                    data.push_back(100 + 5 * x);
+            }
+            ++samples;
+            if (count_changepoints(data) > 0)
+                ++reported;
+        }
+    }
+    ASSERT_EQ(50, samples);
+    ASSERT_LE(reported, 2);
+}
+
+TEST(StatisticsUnitTest, NoChangepointInReadingsOfFewValues) {
+    // The readings of a success rate are 0 or 1. Thirty 1 in a row, which
+    // happen in one series of 30 out of five, are a segment that has no
+    // variance, and a test that takes them for different from the rest
+    // reports a changepoint. It ended a session with a success rate of 1
+    // and a CI of 0.
+    for (size_t n : {300, 1000, 3000}) {
+        for (uint64_t seed = 1; seed <= 20; ++seed) {
+            pcg64_t rng(static_cast<uint64_t>(seed * 31 + n));
+            vector<double> success, half, five;
+            for (size_t i = 0; i < n; ++i) {
+                success.push_back(rng.unit_f64() < 0.95 ? 1 : 0);
+                half.push_back(rng.unit_f64() < 0.5 ? 1 : 0);
+                five.push_back(static_cast<double>(rng.next_u64() % 5));
+            }
+            ASSERT_EQ(0, count_changepoints(success)) << "95% 1, n " << n << ", seed " << seed;
+            ASSERT_EQ(0, count_changepoints(half)) << "50% 1, n " << n << ", seed " << seed;
+            ASSERT_EQ(0, count_changepoints(five)) << "five values, n " << n << ", seed " << seed;
+        }
+    }
+
+    // a change of the success rate is a change
+    vector<double> data;
+    pcg64_t rng(static_cast<uint64_t>(5));
+    for (size_t i = 0; i < 1000; ++i)
+        data.push_back(rng.unit_f64() < (i < 300 ? 0.5 : 0.95) ? 1 : 0);
+    size_t loc = 0;
+    ASSERT_EQ(0, pilot_find_one_changepoint(data.data(), data.size(), &loc));
+    ASSERT_NEAR(300, loc, 20);
+}
+
+TEST(StatisticsUnitTest, RankSumTest) {
+    // k values that are all less than the m others: there are C(k + m, k)
+    // ways to deal the ranks, and two of them are as far from the middle.
+    // Welch's test on the ranks has 8.9e-31, 5e-31, and 1.1e-10 for the first
+    // three, which let excursions of two or three subsession samples pass
+    // for changepoints.
+    struct {
+        size_t k, m;
+        double p;
+    } separated[] = {{2, 98, 2.0 / 4950}, {3, 97, 2.0 / 161700}, {3, 30, 2.0 / 5456},
+                     {5, 50, 2.0 / 3478761}, {1, 9, 2.0 / 10}, {2, 2, 2.0 / 6}};
+    for (auto &c : separated) {
+        vector<double> a, b;
+        for (size_t i = 0; i < c.k; ++i) a.push_back(static_cast<double>(i));
+        for (size_t i = 0; i < c.m; ++i) b.push_back(1000 + static_cast<double>(i));
+        ASSERT_NEAR(c.p, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-9 * c.p)
+            << c.k << " against " << c.m;
+        // the order of the samples, and which of them is the greater
+        ASSERT_NEAR(c.p, pilot_rank_sum_test(b.data(), b.size(), a.data(), a.size()), 1e-9 * c.p);
+        for (double &x : a) x += 5000;
+        ASSERT_NEAR(c.p, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-9 * c.p);
+    }
+
+    // U = 17 of 8 among 108: P(U <= 17) is 1025 ways of 352025629371
+    {
+        vector<double> a{1, 2, 3, 4, 5, 6, 7, 25};
+        vector<double> b;
+        for (int r = 8; r <= 108; ++r)
+            if (25 != r) b.push_back(r);
+        ASSERT_EQ(100, b.size());
+        ASSERT_NEAR(2 * 1025.0 / 352025629371.0,
+                    pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-20);
+    }
+
+    // samples that are not different
+    {
+        vector<double> a{1, 4, 5, 8, 9, 12};
+        vector<double> b{2, 3, 6, 7, 10, 11};
+        ASSERT_GT(pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 0.9);
+    }
+
+    // large samples, where the normal approximation is used: 1000 against
+    // 1000 that are greater by one standard deviation of N(0, 1)
+    {
+        pcg64_t rng(static_cast<uint64_t>(2));
+        vector<double> a, b;
+        for (int i = 0; i < 1000; ++i) {
+            a.push_back(rng.normal());
+            b.push_back(1 + rng.normal());
+        }
+        const double p = pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size());
+        ASSERT_LT(p, 1e-50);
+        ASSERT_GE(p, 0);
+    }
+
+    // an empty sample
+    {
+        vector<double> a{1, 2, 3};
+        ASSERT_EQ(1, pilot_rank_sum_test(a.data(), a.size(), a.data(), 0));
+    }
+}
+
+TEST(StatisticsUnitTest, RankSumTestOfValuesThatAreTheSame) {
+    // 30 readings of 1 against 970 readings of which 49 are 0. Welch's test
+    // on the ranks, of which one side has no variance, has 4e-12. Fisher's
+    // exact test has 0.3945.
+    {
+        vector<double> a(30, 1.0), b;
+        for (int i = 0; i < 970; ++i)
+            b.push_back(i % 20 ? 1 : 0);
+        ASSERT_NEAR(0.394502734614766, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-12);
+        ASSERT_NEAR(0.394502734614766, pilot_rank_sum_test(b.data(), b.size(), a.data(), a.size()), 1e-12);
+    }
+
+    // samples that are the same cannot be different, whatever their sizes
+    for (size_t k : {2, 18, 41, 55, 100}) {
+        for (size_t m : {2, 212, 746, 2746}) {
+            vector<double> c(k, 3.14), d(m, 3.14);
+            ASSERT_EQ(1, pilot_rank_sum_test(c.data(), c.size(), d.data(), d.size()))
+                << k << " against " << m;
+        }
+    }
+
+    // 300 readings of which half are 0 against 700 of which 35 are
+    {
+        vector<double> e, f;
+        for (int i = 0; i < 300; ++i) e.push_back(i % 2);
+        for (int i = 0; i < 700; ++i) f.push_back(i % 20 ? 1 : 0);
+        const double p = pilot_rank_sum_test(e.data(), e.size(), f.data(), f.size());
+        ASSERT_NEAR(4.92895298666787e-59, p, 1e-68);
+    }
+
+    // small tables, of which the p-values are 62/2261 and 13/63
+    {
+        vector<double> a{0, 0, 0, 0, 0, 0, 0, 1, 1, 1};
+        vector<double> b{0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+        ASSERT_NEAR(62.0 / 2261, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-14);
+        vector<double> c{0, 0, 0, 0, 1};
+        vector<double> d{0, 1, 1, 1, 1};
+        ASSERT_NEAR(13.0 / 63, pilot_rank_sum_test(c.data(), c.size(), d.data(), d.size()), 1e-14);
+    }
+
+    // Few values are the same: the ranks of those that are the same are
+    // dealt in the way that is the least in favor of a difference. Here 10
+    // is in both samples, and a gets the greater of its two ranks, so a has
+    // the ranks 1 to 9 and 11 of 110: U = 1, of which there are 2 ways.
+    {
+        vector<double> a{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+        vector<double> b{10};
+        for (int i = 11; i < 110; ++i) b.push_back(i);
+        ASSERT_EQ(100, b.size());
+        const double ways = 46897636623981.0;   // C(110, 10)
+        ASSERT_NEAR(2 * 2 / ways, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()), 1e-25);
+    }
+
+    // a value that is not a number
+    {
+        vector<double> a{1, 2, std::numeric_limits<double>::quiet_NaN()};
+        vector<double> b{4, 5, 6, 7};
+        ASSERT_EQ(1, pilot_rank_sum_test(a.data(), a.size(), b.data(), b.size()));
+    }
+}
+
+TEST(StatisticsUnitTest, ChangepointOfReadingsThatAreNotNumbers) {
+    vector<double> data;
+    pcg64_t rng(static_cast<uint64_t>(9));
+    for (size_t i = 0; i < 1000; ++i)
+        data.push_back((i < 100 ? 3 : 0) + rng.normal());
+    ASSERT_EQ(1, count_changepoints(data));
+    // a reading that is not a number: no detection, and no crash
+    data[500] = std::numeric_limits<double>::quiet_NaN();
+    ASSERT_EQ(0, count_changepoints(data));
+    data[500] = std::numeric_limits<double>::infinity();
+    ASSERT_EQ(0, count_changepoints(data));
+
+    // readings of which the variance is greater than any double
+    data.clear();
+    for (size_t i = 0; i < 1000; ++i)
+        data.push_back(1e300 * (1 + 0.1 * rng.normal()) * (i < 100 ? 1.5 : 1));
+    int *changepoints = NULL;
+    size_t cp_n = 0;
+    ASSERT_EQ(0, pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n));
+    pilot_free(changepoints);
+}
+
+TEST(StatisticsUnitTest, ChangepointOfWarmUpAndCoolDown) {
+    // 50 readings of warm-up that are lower by 2 standard deviations, 400
+    // stable readings, and 50 readings of cool-down that are lower by 3
+    size_t found_both = 0;
+    const size_t samples = 20;
+    for (uint64_t seed = 1; seed <= samples; ++seed) {
+        pcg64_t rng(static_cast<uint64_t>(seed));
+        vector<double> data;
+        for (size_t i = 0; i < 500; ++i) {
+            double level = 100;
+            if (i < 50) level -= 2 * 5;
+            if (i >= 450) level -= 3 * 5;
+            data.push_back(level + 5 * rng.normal());
+        }
+        int *changepoints = NULL;
+        size_t cp_n = 0;
+        ASSERT_EQ(0, pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n));
+        bool ok = (2 == cp_n) && abs(changepoints[0] - 50) <= 5 && abs(changepoints[1] - 450) <= 5;
+        pilot_free(changepoints);
+        if (!ok) continue;
+        ++found_both;
+
+        size_t begin = 0, end = 0;
+        ASSERT_EQ(0, pilot_find_dominant_segment(data.data(), data.size(), &begin, &end));
+        ASSERT_NEAR(50, begin, 5);
+        ASSERT_NEAR(450, end, 5);
+        size_t loc = 0;
+        ASSERT_EQ(0, pilot_find_one_changepoint(data.data(), data.size(), &loc));
+        ASSERT_NEAR(450, loc, 5);
+    }
+    // they are found in about 97% of such samples
+    ASSERT_GE(found_both, samples - 2);
+}
+
+TEST(StatisticsUnitTest, ChangepointOfLargeReadings) {
+    // The readings are about 1e12 and the change is 20. The place of the
+    // change must not be lost in the digits.
+    vector<double> data;
+    pcg64_t rng(static_cast<uint64_t>(7));
+    for (size_t i = 0; i < 300; ++i)
+        data.push_back(1e12 + (i < 100 ? 0 : 20) + 5 * rng.normal());
+    size_t loc = 0;
+    ASSERT_EQ(0, pilot_find_one_changepoint(data.data(), data.size(), &loc));
+    ASSERT_NEAR(100, loc, 3);
+}
+
+TEST(StatisticsUnitTest, ChangepointNeedsTwoSegments) {
+    // no segment is shorter than MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE
+    vector<double> data;
+    for (int i = 0; i < 29; ++i)
+        data.push_back(1.1);
+    for (int i = 0; i < 30; ++i)
+        data.push_back(5.1);
+    ASSERT_EQ(0, count_changepoints(data));
+    data.push_back(5.1);
+    int *changepoints = NULL;
+    size_t cp_n = 0;
+    ASSERT_EQ(0, pilot_changepoint_detection(data.data(), data.size(), &changepoints, &cp_n));
+    ASSERT_EQ(1, cp_n);
+    // the change is at 29 but the first segment has to have 30 readings
+    ASSERT_EQ(30, changepoints[0]);
+    pilot_free(changepoints);
+
+    // the same reading all the time
+    data.assign(500, 3.14);
+    ASSERT_EQ(0, count_changepoints(data));
 }
 
 TEST(StatisticsUnitTest, FindChangepoint) {

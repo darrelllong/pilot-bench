@@ -2,8 +2,8 @@
 # Mock benchmark for testing Pilot's readings changepoint
 # handling. This script displays one mock benchmark result on each
 # run. Progress is stored at /tmp/pilot_mock_benchmark_cp_round.txt.
-# This script uses the same data as mock_benchmark.sh but displays
-# the data twice with the data doubled at the second time.
+# This script has a warm-up of 40 rounds, in which the response time is
+# longer by 2 ms, and then displays the same data as mock_benchmark.sh.
 #
 # Copyright (c) 2017-2019 Yan Li <yanli@tuneup.ai>. All rights reserved.
 # The Pilot tool and library is free software; you can redistribute it
@@ -62,15 +62,19 @@ if [ -f $ROUND_FILE ]; then
 else
     ROUND=0
 fi
-if [ $ROUND -ge ${#DATA[@]} ]; then
-    if [ $ROUND -ge $((${#DATA[@]} * 2)) ]; then
+# The first WARM_UP_ROUNDS rounds are the warm-up, in which the response time
+# is longer by 2 ms. The rounds after the warm-up go through DATA from the
+# beginning, as mock_benchmark.sh does.
+WARM_UP_ROUNDS=40
+if [ $ROUND -lt $WARM_UP_ROUNDS ]; then
+    COLA=`echo ${DATA[$(( $ROUND % ${#DATA[@]} ))]} + 2 | bc`
+else
+    STABLE_ROUND=$(( $ROUND - $WARM_UP_ROUNDS ))
+    if [ $STABLE_ROUND -ge ${#DATA[@]} ]; then
         rm "$ROUND_FILE"
         exit 1
-    else
-        COLA=${DATA[$(( $ROUND - ${#DATA[@]}))]}
     fi
-else
-    COLA=${DATA[$ROUND]}
+    COLA=${DATA[$STABLE_ROUND]}
 fi
 
 COLB=`echo $COLA + 1 | bc`

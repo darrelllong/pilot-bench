@@ -5,30 +5,6 @@ if (WITH_PYTHON)
 endif (WITH_PYTHON)
 
 ###############################################################################
-## Twitter BreakoutDetection LIBRARY
-
-ExternalProject_Add (twitter_breakoutdetection
-  GIT_REPOSITORY https://github.com/twitter/BreakoutDetection.git
-  GIT_TAG 7ae3fc4
-
-  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/twitter_breakoutdetection
-  PATCH_COMMAND ${BASH_EXECUTABLE} "${CMAKE_SOURCE_DIR}/cmake/patch_twitter_bd.sh" "${CMAKE_CURRENT_LIST_DIR}/twitter_breakoutdetection_pilot.patch"
-  CONFIGURE_COMMAND ""
-  BUILD_COMMAND ""
-  INSTALL_COMMAND ""
-)
-ExternalProject_Get_Property(twitter_breakoutdetection SOURCE_DIR)
-set (TWITTER_BREAKOUTDETECTION_INCLUDE_DIR ${SOURCE_DIR})
-# let the twitter_bd source files depend on the library so CMake will fetch the
-# externalproject before building
-add_custom_command(OUTPUT ${TWITTER_BREAKOUTDETECTION_INCLUDE_DIR}/src/edm-per.cpp
-                   DEPENDS twitter_breakoutdetection COMMAND "")
-add_custom_command(OUTPUT ${TWITTER_BREAKOUTDETECTION_INCLUDE_DIR}/src/helper.cpp
-                   DEPENDS twitter_breakoutdetection COMMAND "")
-
-
-# add the binary tree directory to the search path 
-# for include files
 include_directories (SYSTEM ${GTEST_INCLUDE_DIR})
 include_directories (${CMAKE_SOURCE_DIR}/include)
 include_directories (interface_include)
@@ -39,9 +15,7 @@ if (WITH_PYTHON)
 endif (WITH_PYTHON)
 
 # object library for libpilot
-set (PILOT_LIBSRC libpilot.cc workload.cc
-             ${TWITTER_BREAKOUTDETECTION_INCLUDE_DIR}/src/edm-per.cpp
-             ${TWITTER_BREAKOUTDETECTION_INCLUDE_DIR}/src/helper.cpp)
+set (PILOT_LIBSRC libpilot.cc workload.cc)
 
 # Everytime we call add_library with .cc files they are compiled once. We call
 # add_library twice, once for the shared lib here once for the static lib
@@ -69,18 +43,14 @@ if (WITH_PYTHON)
 endif (WITH_PYTHON)
 
 if (WITH_TUI)
-  add_dependencies (pilot_sharedlib cdk twitter_breakoutdetection)
-else ()
-  add_dependencies (pilot_sharedlib twitter_breakoutdetection)
+  add_dependencies (pilot_sharedlib cdk)
 endif (WITH_TUI)
 
 # static library
 add_library (pilot_staticlib STATIC ${PILOT_LIBSRC})
 set_target_properties(pilot_staticlib PROPERTIES OUTPUT_NAME pilot)
 if (WITH_TUI)
-  add_dependencies (pilot_staticlib cdk twitter_breakoutdetection)
-else ()
-  add_dependencies (pilot_staticlib twitter_breakoutdetection)
+  add_dependencies (pilot_staticlib cdk)
 endif (WITH_TUI)
 
 # installation
@@ -137,15 +107,25 @@ target_link_libraries (unit_test_wps ${PILOT_TESTS_LIBRARIES})
 add_executable (unit_test_macros test/unit_test_macros.cc)
 target_link_libraries (unit_test_macros ${PILOT_TESTS_LIBRARIES})
 
+add_executable (unit_test_random test/unit_test_random.cc)
+target_link_libraries (unit_test_random ${PILOT_TESTS_LIBRARIES})
+
+# This measures how often the changepoint detection is right. It takes
+# minutes, so it is not one of the tests.
+add_executable (changepoint_rates test/changepoint_rates.cc)
+target_link_libraries (changepoint_rates pilot_sharedlib ${Boost_LIBRARIES_WITHOUT_PYTHON} ${CMAKE_THREAD_LIBS_INIT} ${CDK_LIBRARIES})
+
 # gtest is an external project. Without this a parallel build can compile the
 # tests before gtest's header files are downloaded.
-foreach (test_target func_test_seq_write unit_test_misc unit_test_run_workload unit_test_statistics unit_test_session_duration unit_test_unit_readings_iter unit_test_readings_warmup_removal unit_test_compare_results unit_test_wps unit_test_macros)
+foreach (test_target func_test_seq_write unit_test_misc unit_test_run_workload unit_test_statistics unit_test_session_duration unit_test_unit_readings_iter unit_test_readings_warmup_removal unit_test_compare_results unit_test_wps unit_test_macros unit_test_random)
   add_dependencies (${test_target} gtest)
 endforeach ()
 
 
 add_test (NAME unit_test_misc
 		  COMMAND unit_test_misc)
+add_test (NAME unit_test_random
+		  COMMAND unit_test_random)
 add_test (NAME unit_test_statistics
 		  COMMAND unit_test_statistics)
 add_test (NAME unit_test_run_workload

@@ -181,6 +181,9 @@ public:  // FIXME: most of the following members should be private and controlle
     std::vector<baseline_info_t> baseline_of_readings_;
     std::vector<baseline_info_t> baseline_of_unit_readings_;
 
+    //! The number of readings when we last looked for changepoints in them
+    mutable std::vector<size_t> readings_changepoint_checked_at_;
+
     // Raw data
     typedef std::vector<double> reading_data_t;      //! The data of one reading of all rounds
     typedef std::vector<double> unit_reading_data_per_round_t;

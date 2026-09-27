@@ -80,7 +80,7 @@ int handle_detect_changepoint_edm(int argc, const char** argv) {
             ("csv-file,c", po::value<string>(), "input csv file name, use - for stdin")
             ("field,f", po::value<int>(), "the field of the csv to import")
             ("ignore-lines,i", po::value<size_t>(), "ignore the first arg lines")
-            ("percent,p", po::value<double>(), "A real numbered constant used to control the amount of penalization. This value specifies the minimum percent change in the goodness of fit statistic to consider adding an additional change point. A value of 0.25 corresponds to a 25\% increase. Default to 0.25.")
+            ("percent,p", po::value<double>(), "Not used any more, and will be removed.")
             ("quiet,q", "quiet mode")
             ("verbose,v", "print debug information")
             ;
@@ -126,6 +126,7 @@ int handle_detect_changepoint_edm(int argc, const char** argv) {
 
     double percent = 0.25;
     if (vm.count("percent")) {
+        cerr << "Warning: --percent is not used any more and will be removed" << endl;
         percent = vm["percent"].as<double>();
     }
     string input_csv;

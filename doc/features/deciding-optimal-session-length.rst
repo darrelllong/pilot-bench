@@ -30,7 +30,7 @@ measurements if the workload records the duration of each write.
 
 Pilot processes the unit readings as follows:
 
-1. **Non-stable phase removal**: run change-point detection (EDM) on the
+1. **Non-stable phase removal**: run change-point detection on the
    unit reading sequence to find and discard warm-up and cool-down phases
    (see :doc:`warm-up-and-cool-down-phase-detection`).
 2. **Autocorrelation reduction**: apply subsession analysis to the remaining

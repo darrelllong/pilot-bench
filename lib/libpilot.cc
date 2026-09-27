@@ -58,12 +58,16 @@
 #include <boost/log/trivial.hpp>
 #include <boost/log/utility/setup/console.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
+#include <boost/math/distributions/normal.hpp>
 #include <boost/math/distributions/students_t.hpp>
 #include <boost/shared_ptr.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cstdarg>
 #include <cstdlib>
+#include <climits>
+#include <tuple>
+#include <set>
 #include <sys/stat.h>
 #include "common.h"
 #include "config.h"
@@ -94,7 +98,6 @@ static inline nanosecond_type monotonic_time(void) {
                chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-extern vector<int> EDM_percent(const double *Z, int n, int min_size, double percent, int degree);
 
 namespace pilot {
 
@@ -1211,17 +1214,458 @@ pilot_optimal_sample_size_p(const double *data, size_t n,
                                      max_autocorrelation_coefficient);
 }
 
+
+/*
+ * Changepoint detection
+ *
+ * Changepoints are proposed by binary segmentation: the split that takes the
+ * most from the sum of squares is a candidate, and so are the candidates of
+ * the two parts. A candidate is kept only if the two segments next to it are
+ * different, which is decided by the rank-sum test (Wilcoxon, Mann and
+ * Whitney) on their subsession means, or by Fisher's exact test if many of
+ * the subsession means are the same. The candidates are taken out one by
+ * one, the least significant one first, until all that are left are
+ * significant.
+ *
+ * The p-value of the rank-sum test is from the number of ways in which the
+ * ranks can be dealt, because the normal approximation and the t
+ * approximation are both wrong by orders of magnitude far into the tail when
+ * a segment has few subsession means. When the exact calculation is too
+ * large we use the normal approximation, which is not less than the exact
+ * value in the tail.
+ *
+ * The significance level is divided by the number of readings because the
+ * place of a candidate is where the two sides are most different.
+ */
+
+namespace {
+
+double g_changepoint_significance_level = CHANGEPOINT_SIGNIFICANCE_LEVEL;
+
+struct changepoint_test_result_t {
+    double p;      //! the p-value, 1 if the test cannot be done
+    double raw_t;  //! |t| of the readings as they are, for ordering only
+};
+
+/**
+ * The split of [first, first + n) that takes the most from the sum of
+ * squares. Both sides are no shorter than min_size.
+ * @return the size of the left side, or 0 if n < 2 * min_size
+ */
+size_t best_split(const double *first, size_t n, size_t min_size) {
+    if (0 == min_size) min_size = 1;
+    if (n < 2 * min_size) return 0;
+    // we take the mean out first so that large readings don't lose digits
+    double mean = 0;
+    for (size_t i = 0; i < n; ++i)
+        mean += first[i];
+    mean /= n;
+    double sum = 0;
+    for (size_t i = 0; i < n; ++i)
+        sum += first[i] - mean;
+
+    size_t best = 0;
+    double best_stat = -1;
+    double left_sum = 0;
+    for (size_t tau = 1; tau <= n - min_size; ++tau) {
+        left_sum += first[tau - 1] - mean;
+        if (tau < min_size) continue;
+        double d = left_sum / tau - (sum - left_sum) / (n - tau);
+        double stat = static_cast<double>(tau) * (n - tau) / n * d * d;
+        if (stat > best_stat) {
+            best_stat = stat;
+            best = tau;
+        }
+    }
+    return best;
+}
+
+vector<double> subsession_means(const double *first, size_t n, size_t q) {
+    vector<double> means;
+    for (size_t i = 0; i + q <= n; i += q) {
+        double sum = 0;
+        for (size_t j = 0; j < q; ++j)
+            sum += first[i + j];
+        means.push_back(sum / q);
+    }
+    return means;
+}
+
+/**
+ * The smallest subsession size whose subsession means have a lag 1
+ * autocorrelation coefficient within the limit.
+ * @return the subsession size, or 0 if there is none
+ */
+size_t changepoint_subsession_size(const double *first, size_t n) {
+    const double limit = 0.1;
+    const size_t max_q = 256;
+    bool all_same = true;
+    double mean = 0;
+    for (size_t i = 0; i < n; ++i) {
+        if (first[i] != first[0]) all_same = false;
+        mean += first[i];
+    }
+    if (all_same) return 1;
+    mean /= n;
+    for (size_t q = 1; q <= min(n / 3, max_q); ++q) {
+        vector<double> y = subsession_means(first, n, q);
+        if (y.size() < 2) break;
+        double var = 0, cov = 0;
+        for (size_t i = 0; i < y.size(); ++i) {
+            y[i] -= mean;
+            var += y[i] * y[i];
+            if (i > 0) cov += y[i - 1] * y[i];
+        }
+        if (0 == var || abs(cov / var) <= limit)
+            return q;
+    }
+    return 0;
+}
+
+/**
+ * |t| of Welch's test. It is used for ordering only, so it is 0 when it
+ * cannot be calculated.
+ */
+double welch_abs_t(const double *a, size_t na, const double *b, size_t nb) {
+    double mean_a = 0, mean_b = 0;
+    for (size_t i = 0; i < na; ++i) mean_a += a[i];
+    for (size_t i = 0; i < nb; ++i) mean_b += b[i];
+    mean_a /= na;
+    mean_b /= nb;
+    double var_a = 0, var_b = 0;
+    for (size_t i = 0; i < na; ++i) var_a += (a[i] - mean_a) * (a[i] - mean_a);
+    for (size_t i = 0; i < nb; ++i) var_b += (b[i] - mean_b) * (b[i] - mean_b);
+    var_a /= (na - 1);
+    var_b /= (nb - 1);
+    double d = abs(mean_a - mean_b);
+    double se2 = var_a / na + var_b / nb;
+    if (!std::isfinite(d) || !std::isfinite(se2)) return 0;
+    if (!(se2 > 0))
+        return (0 == d) ? 0 : std::numeric_limits<double>::infinity();
+    return d / sqrt(se2);
+}
+
+/**
+ * P(U <= u) of the Mann-Whitney U of a group of k among k + m values that
+ * are all different. The number of ways of getting U = j is the coefficient
+ * of x^j of the Gaussian binomial coefficient
+ * prod_{i=1..k} (1 - x^(m+i)) / (1 - x^i), and there are C(k + m, k) ways in
+ * all. We scale by i / (m + i) at every step so that the coefficients are
+ * probabilities, which the numbers of ways would not fit in a double.
+ */
+double rank_sum_exact_lower_tail(size_t k, size_t m, size_t u) {
+    vector<double> p(u + 1, 0.0);
+    p[0] = 1;
+    for (size_t i = 1; i <= k; ++i) {
+        // divide by (1 - x^i)
+        for (size_t j = i; j <= u; ++j)
+            p[j] += p[j - i];
+        // multiply by (1 - x^(m + i)), from the highest so that we read the
+        // values of before the multiplication
+        const size_t s = m + i;
+        for (size_t j = u; j >= s && j <= u; --j)
+            p[j] -= p[j - s];
+        const double scale = static_cast<double>(i) / static_cast<double>(m + i);
+        for (size_t j = 0; j <= u; ++j)
+            p[j] *= scale;
+    }
+    double sum = 0;
+    for (size_t j = 0; j <= u; ++j)
+        sum += p[j];
+    // rounding errors of the subtraction
+    return min(1.0, max(0.0, sum));
+}
+
+/**
+ * P(U <= u) of k among k + m values that are all different: exact if the
+ * calculation is not too large, and the normal approximation otherwise
+ * @param only_if_small do the exact calculation only if the normal
+ * approximation is no more than 0.05. The exact value is not greater than
+ * the approximation in the tail, so this is enough to tell if the p-value is
+ * below a level that is far less than 0.05, and it is much faster. Near the
+ * middle the approximation can be less than the exact value.
+ * @return the two-sided p-value
+ */
+double rank_sum_p(size_t k, size_t m, double u, bool only_if_small) {
+    const double km = static_cast<double>(k) * m;
+    const double sigma = sqrt(km * (k + m + 1) / 12);
+    boost::math::normal normal_dist;
+    const double p_normal = min(1.0, 2 * boost::math::cdf(normal_dist, (u + 0.5 - km / 2) / sigma));
+    if (only_if_small && p_normal > 0.05) return p_normal;
+    // ln C(k + m, k), the number of ways has to fit in a double
+    const double ln_ways = lgamma(k + m + 1.0) - lgamma(k + 1.0) - lgamma(m + 1.0);
+    const double work = static_cast<double>(k) * (u + 1);
+    if (ln_ways > 690 || work > 2e6) return p_normal;
+    return min(1.0, 2 * rank_sum_exact_lower_tail(k, m, static_cast<size_t>(u)));
+}
+
+/**
+ * Fisher's exact test of a 2 x 2 table: of n values, low are in the lower
+ * class; of the k values of a sample, x are in the lower class. If the
+ * sample is like the rest, x has the hypergeometric distribution.
+ * @return the probability of all x that are as far from the expectation
+ * k low / n as the x that we have, or further
+ */
+double fisher_exact_test(size_t n, size_t low, size_t k, size_t x) {
+    const double expectation = static_cast<double>(k) * low / n;
+    const double distance = abs(static_cast<double>(x) - expectation) * (1 - 1e-12);
+    const double ln_all = lgamma(n + 1.0) - lgamma(k + 1.0) - lgamma(n - k + 1.0);
+    const size_t first = (k + low > n) ? k + low - n : 0;
+    const size_t last = min(k, low);
+    double p = 0;
+    for (size_t i = first; i <= last; ++i) {
+        if (abs(static_cast<double>(i) - expectation) < distance) continue;
+        p += exp(lgamma(low + 1.0) - lgamma(i + 1.0) - lgamma(low - i + 1.0) +
+                 lgamma(n - low + 1.0) - lgamma(k - i + 1.0) - lgamma(n - low - (k - i) + 1.0) -
+                 ln_all);
+    }
+    return min(1.0, p);
+}
+
+/**
+ * The two-sided p-value of the rank-sum test of a and b
+ *
+ * If all the values are different the p-value is that of the rank-sum test.
+ *
+ * Values that are the same have no order, so there is no rank sum. What we
+ * do depends on how much of the samples they are, which we measure by the
+ * factor by which they make the variance of the rank sum less,
+ * 1 - sum (t^3 - t) / (n^3 - n) where t is the size of a group of values
+ * that are the same.
+ *
+ * - If the factor is 0.99 or more, the ranks of a group are dealt in the way
+ *   that is the least in favor of a difference, which brings the rank sum
+ *   as near to its expectation as it can be. The p-value is then not less
+ *   than that of any other way of dealing them.
+ *
+ * - Otherwise the values are put in two classes, the lower values and the
+ *   higher, at the value that makes the classes most equal in size, and the
+ *   test is Fisher's exact test. This is the case of readings that have few
+ *   different values. For the 0 and 1 of a success rate it is the exact
+ *   test of two proportions.
+ *
+ * Both are exact, or on the safe side of it, for any values. Neither uses
+ * random numbers.
+ */
+double rank_sum_test(const vector<double> &a, const vector<double> &b, bool only_if_small) {
+    // s is the smaller group
+    const vector<double> &s = a.size() <= b.size() ? a : b;
+    const vector<double> &l = a.size() <= b.size() ? b : a;
+    const size_t k = s.size();
+    const size_t m = l.size();
+    const size_t n = k + m;
+    if (0 == k) return 1;
+    for (double x : s) if (!std::isfinite(x)) return 1;
+    for (double x : l) if (!std::isfinite(x)) return 1;
+
+    vector<pair<double, bool> > v;   // value, is in s
+    v.reserve(n);
+    for (double x : s) v.push_back(make_pair(x, true));
+    for (double x : l) v.push_back(make_pair(x, false));
+    sort(v.begin(), v.end());
+
+    struct group_t {
+        size_t size;
+        size_t in_s;
+    };
+    vector<group_t> groups;
+    double tie_sum = 0;
+    for (size_t i = 0; i < n;) {
+        size_t j = i;
+        size_t in_s = 0;
+        while (j < n && v[j].first == v[i].first) {
+            if (v[j].second) ++in_s;
+            ++j;
+        }
+        const double t = static_cast<double>(j - i);
+        tie_sum += t * t * t - t;
+        groups.push_back(group_t{j - i, in_s});
+        i = j;
+    }
+    if (1 == groups.size()) return 1;
+    const double dn = static_cast<double>(n);
+    const double tie_factor = 1 - tie_sum / (dn * dn * dn - dn);
+
+    if (tie_factor < 0.99) {
+        // two classes that are as equal in size as they can be
+        size_t best_low = 0, best_x = 0, best_size = 0;
+        size_t low = 0, x = 0;
+        for (size_t g = 0; g + 1 < groups.size(); ++g) {
+            low += groups[g].size;
+            x += groups[g].in_s;
+            const size_t smaller = min(low, n - low);
+            if (smaller > best_size) {
+                best_size = smaller;
+                best_low = low;
+                best_x = x;
+            }
+        }
+        return fisher_exact_test(n, best_low, k, best_x);
+    }
+
+    // the least and the greatest rank sum of s that the groups allow
+    double w_min = 0, w_max = 0;
+    size_t rank = 0;   // the ranks of a group are rank + 1 to rank + size
+    for (const group_t &g : groups) {
+        for (size_t c = 0; c < g.in_s; ++c) {
+            w_min += static_cast<double>(rank + 1 + c);
+            w_max += static_cast<double>(rank + g.size - c);
+        }
+        rank += g.size;
+    }
+    const double mu = static_cast<double>(k) * (n + 1) / 2;
+    if (w_min <= mu && mu <= w_max) return 1;
+
+    // the U of the lower tail: the distribution is symmetric
+    const double w_least = static_cast<double>(k) * (k + 1) / 2;
+    const double km = static_cast<double>(k) * m;
+    double u = (w_max < mu) ? w_max - w_least : km - (w_min - w_least);
+    if (u < 0) u = 0;
+    return rank_sum_p(k, m, u, only_if_small);
+}
+
+/**
+ * Test if [first, first + na) and [first + na, first + na + nb) are different
+ */
+changepoint_test_result_t changepoint_test(const double *first, size_t na, size_t nb) {
+    changepoint_test_result_t res;
+    res.p = 1;
+    res.raw_t = 0;
+    if (na < 2 || nb < 2) return res;
+    res.raw_t = welch_abs_t(first, na, first + na, nb);
+    // The subsession size is from the longer segment, which has the better
+    // estimate of the autocorrelation
+    size_t q = na >= nb ? changepoint_subsession_size(first, na)
+                        : changepoint_subsession_size(first + na, nb);
+    if (0 == q) return res;
+    vector<double> a = subsession_means(first, na, q);
+    vector<double> b = subsession_means(first + na, nb, q);
+    if (a.size() < 2 || b.size() < 2) return res;
+    res.p = rank_sum_test(a, b, true);
+    // p is NaN if something that we don't know of went wrong
+    if (!(res.p >= 0)) res.p = 1;
+    return res;
+}
+
+/**
+ * Detect changepoints
+ * @param min_size the size of the shortest segment
+ * @param significance_level the significance level, which is divided by n
+ * @return the changepoints in ascending order. A changepoint is the index of
+ * the first reading of a segment.
+ */
+vector<int> detect_changepoints(const double *data, size_t n, size_t min_size,
+                                double significance_level) {
+    for (size_t i = 0; i < n; ++i) {
+        if (!std::isfinite(data[i])) {
+            warning_log << "Reading " << i << " is not a number, no changepoint detection";
+            return vector<int>();
+        }
+    }
+
+    // propose
+    vector<size_t> cps;
+    vector<pair<size_t, size_t> > todo;
+    todo.push_back(make_pair(static_cast<size_t>(0), n));
+    while (!todo.empty()) {
+        pair<size_t, size_t> seg = todo.back();
+        todo.pop_back();
+        size_t tau = best_split(data + seg.first, seg.second - seg.first, min_size);
+        if (0 == tau) continue;
+        cps.push_back(seg.first + tau);
+        todo.push_back(make_pair(seg.first, seg.first + tau));
+        todo.push_back(make_pair(seg.first + tau, seg.second));
+    }
+    sort(cps.begin(), cps.end());
+    const size_t c = cps.size();
+    if (0 == c) return vector<int>();
+
+    // dispose
+    const double threshold = significance_level / n;
+    const size_t none = static_cast<size_t>(-1);
+    vector<size_t> prev(c), next(c);
+    vector<changepoint_test_result_t> res(c);
+    for (size_t i = 0; i < c; ++i) {
+        prev[i] = (0 == i) ? none : i - 1;
+        next[i] = (i + 1 == c) ? none : i + 1;
+    }
+    auto test = [&](size_t i) {
+        size_t begin = (none == prev[i]) ? 0 : cps[prev[i]];
+        size_t end = (none == next[i]) ? n : cps[next[i]];
+        return changepoint_test(data + begin, cps[i] - begin, end - cps[i]);
+    };
+    // the least significant first: the greatest p, then the smallest |t|,
+    // then the first
+    typedef std::tuple<double, double, size_t> key_t;
+    auto key = [&](size_t i) { return key_t(-res[i].p, res[i].raw_t, i); };
+    std::set<key_t> order;
+    for (size_t i = 0; i < c; ++i) {
+        res[i] = test(i);
+        order.insert(key(i));
+    }
+    while (!order.empty()) {
+        const size_t worst = std::get<2>(*order.begin());
+        if (res[worst].p <= threshold) break;
+        order.erase(order.begin());
+        // the segments of its neighbors have changed
+        const size_t before = prev[worst], after = next[worst];
+        if (none != before) next[before] = after;
+        if (none != after) prev[after] = before;
+        for (size_t nb : {before, after}) {
+            if (none == nb) continue;
+            order.erase(key(nb));
+            res[nb] = test(nb);
+            order.insert(key(nb));
+        }
+    }
+    vector<int> result;
+    for (const key_t &k : order)
+        result.push_back(static_cast<int>(cps[std::get<2>(k)]));
+    sort(result.begin(), result.end());
+    return result;
+}
+
+} // namespace
+
+double pilot_rank_sum_test(const double *a, size_t na, const double *b, size_t nb) noexcept {
+    ASSERT_VALID_POINTER(a);
+    ASSERT_VALID_POINTER(b);
+    return rank_sum_test(vector<double>(a, a + na), vector<double>(b, b + nb), false);
+}
+
+bool pilot_changepoint_detection_is_due(size_t n, size_t last_n) noexcept {
+    if (n <= 200 || n < last_n) return true;
+    return n >= last_n + last_n / 100;
+}
+
+double pilot_set_changepoint_significance_level(double significance_level) noexcept {
+    double old = g_changepoint_significance_level;
+    if (significance_level > 0 && significance_level < 1) {
+        g_changepoint_significance_level = significance_level;
+    } else {
+        error_log << __func__ << "(): the significance level has to be in (0, 1)";
+    }
+    return old;
+}
+
 int pilot_changepoint_detection(const double *data, size_t n,
                                 int **changepoints, size_t *cp_n,
                                 double percent, int degree) noexcept {
     ASSERT_VALID_POINTER(data);
     ASSERT_VALID_POINTER(changepoints);
     ASSERT_VALID_POINTER(cp_n);
+    (void)percent;
+    (void)degree;
+    if (n > static_cast<size_t>(INT_MAX)) {
+        error_log << __func__ << "() cannot have more than " << INT_MAX << " data points";
+        return ERR_WRONG_PARAM;
+    }
     if (n < MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE) {
         error_log << __func__ << format("() requires at least %1% data points") % MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE;
         return ERR_NOT_ENOUGH_DATA;
     }
-    vector<int> t = EDM_percent(data, n, MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE, percent, degree);
+    vector<int> t = detect_changepoints(data, n, MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE,
+                                        g_changepoint_significance_level);
 
     // prepare result array from vector
     size_t result_bytes = sizeof(int) * t.size();
@@ -1236,11 +1680,17 @@ int pilot_find_dominant_segment(const double *data, size_t n, size_t *begin,
     ASSERT_VALID_POINTER(data);
     ASSERT_VALID_POINTER(begin);
     ASSERT_VALID_POINTER(end);
+    (void)percent;
+    (void)degree;
+    if (n > static_cast<size_t>(INT_MAX)) {
+        error_log << __func__ << "() cannot have more than " << INT_MAX << " data points";
+        return ERR_WRONG_PARAM;
+    }
     if (n < min_size) {
         error_log << __func__ << format("() requires at least %1% data points") % min_size;
         return ERR_NOT_ENOUGH_DATA;
     }
-    vector<int> cps = EDM_percent(data, n, min_size, percent, degree);
+    vector<int> cps = detect_changepoints(data, n, min_size, g_changepoint_significance_level);
     if (cps.size() > 0) {
         stringstream ss;
         ss << cps;
@@ -1277,11 +1727,18 @@ int pilot_find_one_changepoint(const double *data, size_t n, size_t *loc,
                                double percent, int degree) noexcept {
     ASSERT_VALID_POINTER(data);
     ASSERT_VALID_POINTER(loc);
+    (void)percent;
+    (void)degree;
+    if (n > static_cast<size_t>(INT_MAX)) {
+        error_log << __func__ << "() cannot have more than " << INT_MAX << " data points";
+        return ERR_WRONG_PARAM;
+    }
     if (n < MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE) {
         error_log << __func__ << format("() requires at least %1% data points") % MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE;
         return ERR_NOT_ENOUGH_DATA;
     }
-    vector<int> cps = EDM_percent(data, n, MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE, percent, degree);
+    vector<int> cps = detect_changepoints(data, n, MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE,
+                                          g_changepoint_significance_level);
     if (cps.size() > 0) {
         *loc = cps.back();
         return 0;
@@ -1457,6 +1914,9 @@ void pilot_import_benchmark_results(pilot_workload_t *wl, size_t round,
                 ++wl->total_num_of_readings_[piid];
             } else {
                 wl->readings_[piid][round] = readings[piid];
+                // the readings are not what they were when we last looked
+                // for changepoints in them
+                wl->readings_changepoint_checked_at_[piid] = 0;
             }
         }
     } // for loop for PI

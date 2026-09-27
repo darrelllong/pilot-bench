@@ -71,7 +71,7 @@ void print_help_msg(const char* argv0) {
     cerr << "Available commands:" << endl;
     cerr << "  analyze                 analyze existing data" << endl;
     cerr << "  run_program             run a benchmark program" << endl;
-    cerr << "  detect_changepoint_edm  use EDM method to detect changepoints from an input file" << endl;
+    cerr << "  detect_changepoint_edm  detect changepoints from an input file" << endl;
     cerr << "Add --help after any command to see command specific help." << endl << endl;
     print_read_the_doc_info();
     cerr << endl;

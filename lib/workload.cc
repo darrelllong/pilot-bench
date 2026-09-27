@@ -78,6 +78,7 @@ void pilot_workload_t::set_num_of_pi(size_t num_of_pi) {
     total_num_of_readings_.resize(num_of_pi);
     baseline_of_readings_.resize(num_of_pi);
     baseline_of_unit_readings_.resize(num_of_pi);
+    readings_changepoint_checked_at_.resize(num_of_pi);
     analytical_result_.set_num_of_pi(num_of_pi);
     analytical_result_update_time_ = chrono::steady_clock::time_point::min();
 }
@@ -278,21 +279,38 @@ void pilot_workload_t::refresh_analytical_result(void) const {
         analytical_result_.readings_ci_type[piid] = pi_info_[piid].reading_ci_type;
         if (analytical_result_.readings_num[piid] >= 2) {
             // First see if we can find a dominant segment
-            if (analytical_result_.readings_num[piid] > MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE) {
+            const bool check_changepoint =
+                    pilot_changepoint_detection_is_due(readings_[piid].size(),
+                                                       readings_changepoint_checked_at_[piid]);
+            if (check_changepoint &&
+                analytical_result_.readings_num[piid] > MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE) {
+                readings_changepoint_checked_at_[piid] = readings_[piid].size();
                 size_t change_loc;
-                // We use 30% as change penalty to make sure the changepoint is significant enough
-                int res = pilot_find_one_changepoint(readings_[piid].data() + analytical_result_.readings_last_changepoint[piid],
-                                                     readings_[piid].size() - analytical_result_.readings_last_changepoint[piid],
+                // We look at all the readings every time, not only at those
+                // after the last changepoint. A changepoint is first found
+                // when there are few readings after it, and no segment can be
+                // shorter than MIN_CHANGEPOINT_DETECTION_SAMPLE_SIZE, so it
+                // is found before where it is. More readings put it right.
+                int res = pilot_find_one_changepoint(readings_[piid].data(),
+                                                     readings_[piid].size(),
                                                      &change_loc);
                 switch (res) {
                 case ERR_NO_CHANGEPOINT:
                     debug_log << __func__ << "(): readings have no changepoint detected";
+                    if (0 != analytical_result_.readings_last_changepoint[piid]) {
+                        info_log << __func__ << format("(): the changepoint in readings at %1% is no longer significant. "
+                                                       "All readings will be used in analysis.") %
+                                                       analytical_result_.readings_last_changepoint[piid];
+                    }
+                    analytical_result_.readings_last_changepoint[piid] = 0;
                     break;
                 case 0:
-                    analytical_result_.readings_last_changepoint[piid] += change_loc;
-                    info_log << __func__ << format("(): changepoint in readings detected at %1%. "
-                                                   "Previous readings will be ignored in analysis.") %
-                                                   analytical_result_.readings_last_changepoint[piid];
+                    if (change_loc != analytical_result_.readings_last_changepoint[piid]) {
+                        info_log << __func__ << format("(): changepoint in readings detected at %1%. "
+                                                       "Previous readings will be ignored in analysis.") %
+                                                       change_loc;
+                    }
+                    analytical_result_.readings_last_changepoint[piid] = change_loc;
                     break;
                 default:
                     fatal_log << __func__ << format("(): unknown error %1% detected, aborting") % res;
