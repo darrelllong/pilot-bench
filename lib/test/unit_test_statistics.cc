@@ -205,6 +205,87 @@ TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression4) {
     ASSERT_NEAR(141053262, v_ci, 1);
 }
 
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSubsession1) {
+    // Exact data that needs subsession size 2: every work amount is used
+    // for two rounds in a row, so the naive v of adjacent rounds is
+    // correlated. alpha and v must not depend on the subsession size.
+    const double exp_alpha = 4;
+    const double exp_v = 1.5;
+    const vector<size_t> order{240, 180, 30, 90, 300, 60, 210, 360, 150, 270, 330, 120};
+    vector<size_t> work_amount;
+    vector<nanosecond_type> round_duration;
+    for (size_t c : order) {
+        for (int i = 0; i < 2; ++i) {
+            work_amount.push_back(c);
+            round_duration.push_back(ONE_SECOND * (exp_alpha + c / exp_v));
+        }
+    }
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
+    size_t subsession_sample_size = 0;
+    ASSERT_EQ(0, pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+        work_amount.data(), round_duration.data(),
+        0.1,  // autocorrelation_coefficient_limit
+        0,    // duration threshold
+        &alpha, &v, &v_ci, &ssr, NULL, &subsession_sample_size));
+    ASSERT_EQ(work_amount.size() / 2, subsession_sample_size);
+    ASSERT_NEAR(exp_alpha, alpha, 1e-6);
+    ASSERT_NEAR(exp_v, v, 1e-6);
+    ASSERT_NEAR(0, ssr, 1e-6);
+    ASSERT_NEAR(0, v_ci, 1e-6);
+}
+
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSubsession2) {
+    // Noisy data that needs subsession size 2. The expected values are from
+    // an ordinary least squares fit of the 12 subsession means.
+    const vector<size_t> work_amount{60, 60, 150, 150, 120, 120, 30, 30, 210, 210, 240, 240,
+                                     330, 330, 360, 360, 180, 180, 300, 300, 90, 90, 270, 270};
+    const vector<nanosecond_type> round_duration{
+        44544341237, 44580062425, 104189214938, 104543662366, 84539519333, 84890513031,
+        24014113052, 23718539793, 143398394018, 143899644382, 163377596893, 162786447008,
+        225626630123, 225570794444, 242575072201, 242463405771, 122569901265, 123172137059,
+        204012938371, 204002214273, 65619180496, 65287643756, 184217413961, 183852193096};
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
+    size_t subsession_sample_size = 0;
+    ASSERT_EQ(0, pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+        work_amount.data(), round_duration.data(),
+        0.1,  // autocorrelation_coefficient_limit
+        0,    // duration threshold
+        &alpha, &v, &v_ci, &ssr, NULL, &subsession_sample_size));
+    ASSERT_EQ(12, subsession_sample_size);
+    ASSERT_NEAR(4.5624488, alpha, 1e-6);
+    ASSERT_NEAR(1.5058144, v, 1e-6);
+    ASSERT_NEAR(19.1507823, ssr, 1e-6);
+    ASSERT_NEAR(0.0269967, v_ci, 1e-6);
+}
+
+TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegressionSubsession3) {
+    // The data of Subsession2 plus one more round. 25 rounds can't be evenly
+    // divided into subsessions of size 2, so the last round is left over. It
+    // must not change alpha, v, or the CI. Only ssr, which is calculated from
+    // all rounds, changes.
+    const vector<size_t> work_amount{60, 60, 150, 150, 120, 120, 30, 30, 210, 210, 240, 240,
+                                     330, 330, 360, 360, 180, 180, 300, 300, 90, 90, 270, 270,
+                                     345};
+    const vector<nanosecond_type> round_duration{
+        44544341237, 44580062425, 104189214938, 104543662366, 84539519333, 84890513031,
+        24014113052, 23718539793, 143398394018, 143899644382, 163377596893, 162786447008,
+        225626630123, 225570794444, 242575072201, 242463405771, 122569901265, 123172137059,
+        204012938371, 204002214273, 65619180496, 65287643756, 184217413961, 183852193096,
+        235912345678};
+    double alpha = 0.0, v = 0.0, v_ci = 0.0, ssr = 0.0;
+    size_t subsession_sample_size = 0;
+    ASSERT_EQ(0, pilot_wps_warmup_removal_lr_method_p(work_amount.size(),
+        work_amount.data(), round_duration.data(),
+        0.1,  // autocorrelation_coefficient_limit
+        0,    // duration threshold
+        &alpha, &v, &v_ci, &ssr, NULL, &subsession_sample_size));
+    ASSERT_EQ(12, subsession_sample_size);
+    ASSERT_NEAR(4.5624488, alpha, 1e-6);
+    ASSERT_NEAR(1.5058144, v, 1e-6);
+    ASSERT_NEAR(24.1593889, ssr, 1e-6);
+    ASSERT_NEAR(0.0269967, v_ci, 1e-6);
+}
+
 TEST(StatisticsUnitTest, TestOfSignificance) {
     // Sample data from http://www.stat.yale.edu/Courses/1997-98/101/meancomp.htm.
     double mean_male = 98.105;

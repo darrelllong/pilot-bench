@@ -68,10 +68,9 @@ degrees of freedom:
 
 .. math::
 
-   \nu = \left\lfloor
+   \nu =
      \frac{\left( \dfrac{\sigma_A^2}{n_A} + \dfrac{\sigma_B^2}{n_B} \right)^2}
-          {\dfrac{\sigma_A^4}{n_A^2 (n_A - 1)} + \dfrac{\sigma_B^4}{n_B^2 (n_B - 1)}}
-   \right\rfloor.
+          {\dfrac{\sigma_A^4}{n_A^2 (n_A - 1)} + \dfrac{\sigma_B^4}{n_B^2 (n_B - 1)}}.
 
 :math:`\nu` lies between :math:`\min(n_A, n_B) - 1` and
 :math:`n_A + n_B - 2`. When both variances are equal it reduces to the
@@ -81,13 +80,13 @@ The two-tailed *p*-value is then
 
 .. math::
 
-   p = 2 \cdot F(t,\, \nu),
+   p = 2 \cdot F(-|t|,\, \nu),
 
-where :math:`F(t, \nu)` is the cumulative distribution function of the
-*t*-distribution with :math:`\nu` degrees of freedom evaluated at :math:`t`.
+where :math:`F(x, \nu)` is the cumulative distribution function of the
+*t*-distribution with :math:`\nu` degrees of freedom evaluated at :math:`x`.
 Multiplying by 2 accounts for the fact that we care about differences in
-either direction (A > B or A < B). A *p*-value below the threshold (typically
-0.01) is taken as evidence that A and B differ significantly.
+either direction (A > B or A < B). A *p*-value below the threshold (0.05 in
+Pilot) is taken as evidence that A and B differ significantly.
 
 Pilot also uses the first equation to compute the optimal subsession sample
 size needed to achieve a target CI width — collecting just enough data to
@@ -101,7 +100,7 @@ The comparison algorithm runs until all of the following conditions are met:
 1. There are enough samples to calculate CIs for all workloads.
 2. Each adjacent pair of CIs is either non-overlapping, or its *p*-value
    for the null hypothesis (:math:`\mu_A = \mu_B`) is below the threshold
-   (default 0.01).
+   of 0.05.
 3. *(Optional but recommended)* Every CI is narrower than the required
    width. A tighter CI makes it easier to compare these results against new
    measurements in the future.

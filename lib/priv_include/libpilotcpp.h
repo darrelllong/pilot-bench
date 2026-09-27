@@ -381,18 +381,20 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
         debug_log << __func__ << "() doesn't have enough samples (<3) after subsession grouping";
         return ERR_NOT_ENOUGH_DATA;
     }
-    std::vector<size_t> subsession_work_amounts;
-    std::vector<nanosecond_type> subsession_round_durations;
+    std::vector<double> subsession_work_amounts;
+    std::vector<double> subsession_round_durations;
 
     size_t subsession_sum_wa = 0;
     nanosecond_type subsession_sum_dur = 0;
-    // convert input into subsession data by grouping every q samples
+    // convert input into subsession data by averaging every q samples. We
+    // have to use the mean, not the sum: the sum of q rounds has an
+    // intercept of q * alpha, not the alpha of a round.
     for (size_t i = 0; i < round_work_amounts.size(); ++i) {
         subsession_sum_wa  += round_work_amounts[i];
         subsession_sum_dur += round_durations[i];
         if (i % size_t(q) == size_t(q) - 1) {
-            subsession_work_amounts.push_back(subsession_sum_wa);
-            subsession_round_durations.push_back(subsession_sum_dur);
+            subsession_work_amounts.push_back(static_cast<double>(subsession_sum_wa) / q);
+            subsession_round_durations.push_back(static_cast<double>(subsession_sum_dur) / q);
             subsession_sum_wa = 0;
             subsession_sum_dur = 0;
         }
@@ -409,8 +411,8 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
 
     double sub_session_ssr = 0;
     for (size_t i = 0; i < subsession_work_amounts.size(); ++i) {
-        double wa = double(subsession_work_amounts[i]);
-        double dur = double(subsession_round_durations[i]) / ONE_SECOND;
+        double wa = subsession_work_amounts[i];
+        double dur = subsession_round_durations[i] / ONE_SECOND;
         sub_session_ssr += pow(*wps_alpha + wps_inv_v * wa - dur, 2);
     }
     debug_log << __func__ << "(): sub_session_ssr: " << sub_session_ssr;
@@ -427,9 +429,11 @@ int pilot_wps_warmup_removal_lr_method(size_t rounds, WorkAmountInputIterator ro
     if (ssr_percent_out) *ssr_percent_out = sqrt(ssr) / dur_sum;
 
     double sigma_sqr = sub_session_ssr / (h - 2);
-    double wa_mean = pilot_subsession_mean(round_work_amounts.begin(), round_work_amounts.size(), ARITHMETIC_MEAN);
-    // S_xx = sum of (subsession_mean_i - overall_mean)^2 = var * (h-1); use h-1, not rounds-1
-    double sum_var = pilot_subsession_var(round_work_amounts.begin(), round_work_amounts.size(), q, wa_mean, ARITHMETIC_MEAN) * (h - 1);
+    // S_xx = sum of (subsession_mean_i - mean)^2 = var * (h-1); use h-1, not
+    // rounds-1. This has to be calculated from the same samples that the
+    // regression used.
+    double wa_mean = pilot_subsession_mean(subsession_work_amounts.begin(), subsession_work_amounts.size(), ARITHMETIC_MEAN);
+    double sum_var = pilot_subsession_var(subsession_work_amounts.begin(), subsession_work_amounts.size(), 1, wa_mean, ARITHMETIC_MEAN) * (h - 1);
     double std_err_v = sqrt(sigma_sqr / sum_var);
     // t* critical value for two-sided CI with h-2 degrees of freedom
     boost::math::students_t t_dist(h - 2);
