@@ -117,6 +117,29 @@ TEST(StatisticsUnitTest, HarmonicMean) {
     ASSERT_DOUBLE_EQ(1.6568334130160711, hm);
 }
 
+// A ratio is analysed through its reciprocals y = 1/x. The expected values
+// were computed independently: ybar = mean(y), H = 1 / ybar, s_y^2 the sample
+// variance of y; the variance is H^4 s_y^2; the interval is
+// [1 / (ybar + d), 1 / (ybar - d)] with d = t(0.975, 5) s_y / sqrt(6), where
+// t(0.975, 5) = 2.57058183564 was found by integrating the density; and the
+// sample size for a width of 0.1 H is s_y^2 (t / d*)^2 with
+// d* = (sqrt(1 + w^2 ybar^2) - 1) / w.
+TEST(StatisticsUnitTest, HarmonicMeanInterval) {
+    const vector<double> d {1.21, 1.67, 1.71, 1.53, 2.03, 2.15};
+    double hm = pilot_subsession_mean_p(d.data(), d.size(), HARMONIC_MEAN);
+    ASSERT_NEAR(0.12664694842376947, pilot_subsession_var_p(d.data(), d.size(), 1, hm, HARMONIC_MEAN), 1e-12);
+    ASSERT_NEAR(0.78691891955, pilot_subsession_confidence_interval_p(d.data(), d.size(), 1, .95, HARMONIC_MEAN, SAMPLE_MEAN), 1e-8);
+    size_t q, opt_sample_size;
+    ASSERT_TRUE(pilot_optimal_sample_size_p(d.data(), d.size(), 0.1 * hm, HARMONIC_MEAN, &q, &opt_sample_size, SAMPLE_MEAN, .95, 1.0));
+    ASSERT_EQ(1, q);
+    ASSERT_EQ(123, opt_sample_size);
+
+    // When the interval of the reciprocals reaches 0, the interval of the
+    // harmonic mean has no upper end.
+    const vector<double> wide {0.01, 100, 0.02, 50};
+    ASSERT_TRUE(std::isinf(pilot_subsession_confidence_interval_p(wide.data(), wide.size(), 1, .95, HARMONIC_MEAN, SAMPLE_MEAN)));
+}
+
 // There are more WPS linear regression test cases in unit_test_readings_warmup_removal.cc
 
 TEST(StatisticsUnitTest, OrdinaryLeastSquareLinearRegression1) {

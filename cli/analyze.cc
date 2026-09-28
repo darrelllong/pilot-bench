@@ -294,6 +294,15 @@ int handle_analyze(int argc, const char** argv) {
         }
     }
 
+    if (HARMONIC_MEAN == pi_mean_method) {
+        for (size_t i = 0; i < data.size(); ++i) {
+            if (!(data[i] > 0)) {
+                fatal_log << format("The harmonic mean needs positive data, and item %1% is %2%") % (i + 1) % data[i];
+                return 6;
+            }
+        }
+    }
+
     double sample_mean = pilot_subsession_mean_p(data.data(), data.size(), pi_mean_method);
     printf("sample_size %zu\n", data.size());
     printf("mean %f\n", sample_mean);

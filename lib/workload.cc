@@ -242,7 +242,8 @@ static ssize_t _calc_required_num_of_readings(const pilot_workload_t *wl,
     double ci_width = wl->get_required_ci(pilot_subsession_mean(data, n, mean_method));
 
     size_t opt_sample_size;
-    if (!pilot_optimal_sample_size(data, n, ci_width, mean_method, q, &opt_sample_size, ci_type)) {
+    if (!pilot_optimal_sample_size(data, n, ci_width, mean_method, q, &opt_sample_size, ci_type,
+                                   wl->confidence_level_)) {
         debug_log << "Don't have enough data to calculate required readings sample size yet";
         return -1;
     } else {
@@ -404,7 +405,7 @@ void pilot_workload_t::refresh_analytical_result(void) const {
             analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] = subsession_var_rt * analytical_result_.unit_readings_mean_formatted[piid];
             analytical_result_.unit_readings_optimal_subsession_autocorrelation_coefficient[piid] = unit_readings_autocorrelation_coefficient(piid, q, ARITHMETIC_MEAN);
             analytical_result_.unit_readings_optimal_subsession_ci_width[piid] =
-                    pilot_subsession_confidence_interval(pilot_pi_unit_readings_iter_t(this, piid), total_num_of_unit_readings_[piid], q, .95, ARITHMETIC_MEAN, SAMPLE_MEAN);
+                    pilot_subsession_confidence_interval(pilot_pi_unit_readings_iter_t(this, piid), total_num_of_unit_readings_[piid], q, confidence_level_, ARITHMETIC_MEAN, SAMPLE_MEAN);
             double ci = analytical_result_.unit_readings_optimal_subsession_ci_width[piid];
             double cif_low = format_unit_reading(piid, sm - ci / 2);
             double cif_high = format_unit_reading(piid, sm + ci / 2);
@@ -533,9 +534,9 @@ char* pilot_workload_t::text_workload_summary(void) const {
             double ci = analytical_result_.unit_readings_optimal_subsession_ci_width_formatted[piid];
             double ci_low = smf - ci / 2;
             double ci_high = smf + ci / 2;
-            s << prefix << "95% confidence interval: [" << ci_low << ", " << ci_high << "] " << pi_info_[piid].unit << endl;
-            s << prefix << "95% confidence interval width: " << ci << " " << pi_info_[piid].unit << endl;
-            s << prefix << "95% confidence interval width is " << analytical_result_.unit_readings_optimal_subsession_ci_width[piid] * 100 / sm << "% of sample_mean" << endl;
+            s << prefix << confidence_level_ * 100 << "% confidence interval: [" << ci_low << ", " << ci_high << "] " << pi_info_[piid].unit << endl;
+            s << prefix << confidence_level_ * 100 << "% confidence interval width: " << ci << " " << pi_info_[piid].unit << endl;
+            s << prefix << confidence_level_ * 100 << "% confidence interval width is " << analytical_result_.unit_readings_optimal_subsession_ci_width[piid] * 100 / sm << "% of sample_mean" << endl;
         }
     }
 

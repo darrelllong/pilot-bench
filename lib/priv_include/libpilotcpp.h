@@ -122,6 +122,25 @@ inline std::unique_ptr<accumulator_base> accumulator_factory(pilot_mean_method_t
     abort();
 }
 
+// A ratio (HARMONIC_MEAN) is analysed through its reciprocals: the harmonic
+// mean of x is 1 / mean(1/x), so the variance, the autocorrelation, and the
+// confidence interval are those of the arithmetic mean of y = 1/x, mapped
+// back to x. The value of a subsession is the mean of its reciprocals, and
+// the centre is the reciprocal of the sample mean. Variances are reported in
+// the units of x squared by the delta method, Var(H) = H^4 Var(y); the ratio
+// of two of them, the autocorrelation coefficient, is that of y.
+inline double subsession_value(const accumulator_base &acc, pilot_mean_method_t mean_method) {
+    return HARMONIC_MEAN == mean_method ? 1.0 / acc.result() : acc.result();
+}
+
+inline double subsession_centre(double sample_mean, pilot_mean_method_t mean_method) {
+    return HARMONIC_MEAN == mean_method ? 1.0 / sample_mean : sample_mean;
+}
+
+inline double subsession_scale(double sample_mean, pilot_mean_method_t mean_method) {
+    return HARMONIC_MEAN == mean_method ? pow(sample_mean, 4) : 1.0;
+}
+
 template <typename InputIterator1, typename InputIterator2>
 double pilot_cov(InputIterator1 x, InputIterator2 y, size_t n, double x_mean, double y_mean,
         enum pilot_mean_method_t mean_method = ARITHMETIC_MEAN) {
@@ -144,21 +163,22 @@ double pilot_subsession_auto_cov(InputIterator first, size_t n, size_t q, double
     }
 
     double uae, ube;
+    const double centre = subsession_centre(sample_mean, mean_method);
     auto ua_acc = accumulator_factory(mean_method);
     for (size_t a = 0; a < q; ++a)
         (*ua_acc)(*first++);
-    uae = ua_acc->result() - sample_mean;
+    uae = subsession_value(*ua_acc, mean_method) - centre;
 
     for (size_t i = 1; i < h; ++i) {
         auto ub_acc = accumulator_factory(mean_method);
         for (size_t b = 0; b < q; ++b)
             (*ub_acc)(*first++);
-        ube = ub_acc->result() - sample_mean;
+        ube = subsession_value(*ub_acc, mean_method) - centre;
 
         cov_acc(uae * ube);
         uae = ube;
     }
-    return cov_acc.result();
+    return cov_acc.result() * subsession_scale(sample_mean, mean_method);
 }
 
 template <typename InputIterator>
@@ -166,14 +186,15 @@ double pilot_subsession_var(InputIterator first, size_t n, size_t q,
         double sample_mean, pilot_mean_method_t mean_method = ARITHMETIC_MEAN) {
     double s = 0;
     size_t h = n/q;  // subsession sample size
+    const double centre = subsession_centre(sample_mean, mean_method);
     for (size_t i = 0; i < h; ++i) {
         auto acc = accumulator_factory(mean_method);
         for (size_t j = 0; j < q; ++j)
             (*acc)(*first++);
 
-        s += pow(acc->result() - sample_mean, 2);
+        s += pow(subsession_value(*acc, mean_method) - centre, 2);
     }
-    return s / (h - 1);
+    return s / (h - 1) * subsession_scale(sample_mean, mean_method);
 }
 
 template <typename InputIterator>
@@ -235,7 +256,11 @@ int pilot_optimal_subsession_size(InputIterator first, const size_t n,
  * @param confidence_level desired confidence level
  * @param mean_method method to calculate mean: arithmetic or harmonic
  * @param ci_type confidence interval type: sample mean or binomial proportion
- * @return width of the confidence interval
+ * @return width of the confidence interval. For a harmonic mean H = 1 / ybar,
+ *         where ybar is the mean of the reciprocals, the interval is
+ *         [1 / (ybar + d), 1 / (ybar - d)], d = T s_y / sqrt(h), which is not
+ *         symmetric about H; its width is returned, and it is infinite when
+ *         ybar <= d.
  */
 template <typename InputIterator>
 double pilot_subsession_confidence_interval(InputIterator first, size_t n,
@@ -255,6 +280,13 @@ double pilot_subsession_confidence_interval(InputIterator first, size_t n,
     switch (ci_type) {
         case SAMPLE_MEAN:
             var = pilot_subsession_var(first, n, q, sm, mean_method);
+            if (HARMONIC_MEAN == mean_method) {
+                const double ybar = 1.0 / sm;
+                const double d = T * sqrt(var / pow(sm, 4) / double(h));
+                if (ybar <= d)
+                    return std::numeric_limits<double>::infinity();
+                return 1.0 / (ybar - d) - 1.0 / (ybar + d);
+            }
             return T * sqrt(var / double(h)) * 2;
         case BINOMIAL_PROPORTION:
             if (sm > 1 || sm < 0) {
@@ -307,7 +339,27 @@ pilot_optimal_sample_size(InputIterator first, size_t n,
 
     double sm = pilot_subsession_mean(first, n, mean_method);
     double var = pilot_subsession_var(first, n, *q, sm, mean_method);
-    *opt_sample_size = ceil(var * pow(T / e, 2));
+    double opt;
+    if (SAMPLE_MEAN == ci_type && HARMONIC_MEAN == mean_method) {
+        // The width of [1 / (ybar + d), 1 / (ybar - d)] is 2d / (ybar^2 - d^2);
+        // it equals w when d = ybar r / (1 + sqrt(1 + r^2)), r = w ybar, the
+        // form of (sqrt(1 + w^2 ybar^2) - 1) / w that does not cancel when r
+        // is small or overflow when it is large. As w grows without bound, d
+        // goes to ybar.
+        const double ybar = 1.0 / sm;
+        const double w = confidence_interval_width;
+        const double r = w * ybar;
+        const double d = std::isinf(r) ? ybar : ybar * r / (1 + std::hypot(1.0, r));
+        opt = var / pow(sm, 4) * pow(T / d, 2);
+    } else {
+        opt = var * pow(T / e, 2);
+    }
+    if (!std::isfinite(opt)) {
+        debug_log << "the required width of the confidence interval (" << confidence_interval_width
+                  << ") cannot be reached with these data";
+        return false;
+    }
+    *opt_sample_size = ceil(opt);
     trace_log << str(boost::format("number of samples required: %1% (desired sample size %2% x opt. subsession size %3%)")
                  % ((*opt_sample_size) * (*q)) % *opt_sample_size % *q);
     return true;

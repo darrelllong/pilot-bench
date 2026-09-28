@@ -109,8 +109,74 @@ the last time.
 The Twitter BreakoutDetection library is no longer used, and is no longer
 downloaded and patched by the build.
 
+Ratios
+~~~~~~
+
+* **The mean method of a PI was not stored.** ``pilot_set_pi_info()``
+  took the mean methods of the readings and the unit readings and did not
+  store them, so every PI was averaged by its arithmetic mean, and a PI of
+  type 1 (``--pi name,unit,column,1,...``) had its CI computed as for type
+  0. The mean method of the readings is now stored. That of the unit
+  readings is still not, because the unit readings are always averaged
+  arithmetically; a result that reported another method would be false. The arithmetic mean of rates is greater than their harmonic mean
+  unless they are all equal, so a throughput was overstated; when every
+  reading is of the same work, the harmonic mean is the total work divided
+  by the total time.
+
+  *On upgrading:* a PI of type 1 is now averaged by its harmonic mean. A
+  time per operation is not a ratio in this sense and must be type 0. A
+  time declared as type 1 was averaged arithmetically until now, and will
+  be averaged harmonically from now on, which is wrong for a time. A
+  reading of a ratio must be positive, since the harmonic mean of data
+  that include 0 is 0 and its interval is not defined: if one is not,
+  ``bench`` ends the session (it returns 12), ``pilot_run_workload()``
+  returns ``ERR_WRONG_PARAM``, ``pilot_import_benchmark_results()`` ends
+  the program, and ``bench analyze -m 1`` returns 6.
+* **A ratio is analysed through its reciprocals.** The harmonic mean of
+  :math:`x` is :math:`H = 1/\bar y`, where :math:`\bar y` is the mean of
+  :math:`y = 1/x`. The autocorrelation, the subsession size, and the CI are
+  those of :math:`\bar y`, and the CI is mapped back:
+  :math:`[1/(\bar y + d),\ 1/(\bar y - d)]`, where
+  :math:`d = t\, s_y / \sqrt{h}`. It is not symmetric about :math:`H`;
+  its width is reported, and it has no upper end, and an infinite width,
+  when :math:`\bar y \le d`. The variance is reported as
+  :math:`H^4 s_y^2`, by the delta method. The required sample size is the
+  one for which the width of that interval is the required width. They
+  were the variance and a symmetric CI of the subsession harmonic means
+  about :math:`H`, which are not those of :math:`H`; ``bench analyze -m 1``
+  reported them. The readings of a session did not use them, because of
+  the defect above; the WPS analysis used the autocorrelation computed in
+  this way (see below). When the width :math:`W` is finite, the ends of the
+  interval can be recovered from :math:`H` and :math:`W`: they are
+  :math:`1/(\bar y \pm d)`, with :math:`\bar y = 1/H` and
+  :math:`d = W \bar y^2 / (1 + \sqrt{1 + W^2 \bar y^2})`.
+* **A required sample size that is not finite is not taken for one.** When
+  no finite number of readings can make the CI as narrow as required (for
+  example an ordinary value whose mean is exactly 0 and a required width
+  that is a percentage of the mean, so 0), the calculation converted an
+  infinite number to an unsigned integer, which is undefined: on x86-64 it
+  gave 0, and the PI was taken as satisfied at the least sample size. It
+  is now reported as not enough data, and the PI is not satisfied.
+* **The required sample size is calculated at the session's confidence
+  level.** It was calculated for 95% whatever the level, so with
+  ``--confidence-level`` above 0.95 a session could end with a CI wider
+  than it required, and below 0.95 it took more readings than it needed.
+* **The CI of the unit readings is at the session's confidence level.** It
+  was at 95%.
+
 WPS Analysis
 ~~~~~~~~~~~~
+
+* **The subsession size of the rates is chosen from their reciprocals.**
+  The WPS analysis chooses its subsession size from the autocorrelation of
+  the per-round rates (work amount / duration) as a harmonic mean. That is
+  now the autocorrelation of the subsession means of their reciprocals,
+  the time per unit of work, about their mean (see Ratios, above). It was
+  that of the subsession harmonic means about the harmonic mean of all the
+  rounds, which is not their mean. The two coefficients are of different
+  quantities, and either can be the larger, so the subsession size, and so
+  the CI of :math:`v` and when a session with work amounts stops, can be
+  smaller or larger than they were.
 
 * **Subsession samples are means.** They were the sums of :math:`q` rounds,
   of which the intercept is :math:`q\alpha`. With a subsession size greater

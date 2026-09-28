@@ -100,13 +100,16 @@ grep -q "variance 0.052647" "$TMPFILE"
 grep -q "optimal_subsession_size 4" "$TMPFILE"
 grep -q "subsession_autocorrelation_coefficient 0.082310" "$TMPFILE"
 
+# A ratio is analysed through its reciprocals y = 1/x: the variance is
+# H^4 Var(y), the interval is [1 / (ybar + d), 1 / (ybar - d)], and the
+# autocorrelation is that of y. The values were computed independently.
 ./bench analyze -m 1 unit_test_analyze_input.csv >$TMPFILE
 grep -q "sample_size 48" "$TMPFILE"
 grep -q "mean 1.713913" "$TMPFILE"
-grep -q "CI 0.159384" "$TMPFILE"
-grep -q "variance 0.075323" "$TMPFILE"
+grep -q "CI 0.162978" "$TMPFILE"
+grep -q "variance 0.078404" "$TMPFILE"
 grep -q "optimal_subsession_size 1" "$TMPFILE"
-grep -q "subsession_autocorrelation_coefficient 0.646682" "$TMPFILE"
+grep -q "subsession_autocorrelation_coefficient 0.591909" "$TMPFILE"
 
 # Test auto header skipping
 ./bench analyze unit_test_analyze_input_3col_with_malformed_header.csv -f 1 >$TMPFILE || :

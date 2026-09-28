@@ -118,8 +118,11 @@ Options
        - ``unit`` — display unit, e.g. ``MB/s`` (may be empty)
        - ``column`` — zero-based column index in workload CSV output
        - ``type`` — ``0`` ordinary value (time, bytes); ``1`` ratio
-         (throughput, speed) uses harmonic mean; ``2`` binary (0 or 1) uses
-         binomial CI
+         (throughput, speed) uses the harmonic mean, which is the total
+         work divided by the total time when every reading is of the same
+         work, with a CI found from the reciprocals of the readings, which
+         is not symmetric about the mean; ``2`` binary (0 or 1) uses
+         binomial CI. A time per operation is type 0.
        - ``must_satisfy`` — ``1`` if this PI's CI must converge before the
          session ends; ``0`` to record only
 
@@ -324,7 +327,9 @@ reported interval. A 95% CI means: if you ran the benchmark many times, 95%
 of the computed intervals would contain the true mean.
 
 **CI width** (``--ci-perc`` or ``--ci``) sets the *required width* of that
-interval. The session continues until the CI is narrower than this threshold.
+interval. From the readings it has, Pilot calculates how many readings the
+CI needs to be this narrow, and the session continues until it has that
+many.
 
 Together they determine how much data Pilot collects:
 
@@ -337,7 +342,9 @@ Together they determine how much data Pilot collects:
      - Interpretation
    * - 0.95 (default)
      - 10% of mean
-     - 95% sure the true mean is within ±5% of the measured mean
+     - 95% sure the true mean is within ±5% of the measured mean (for a
+       ratio, type 1, the interval is not symmetric about the mean, and
+       its width is 10% of the mean)
    * - 0.99
      - 10% of mean
      - 99% sure — requires more rounds than the above

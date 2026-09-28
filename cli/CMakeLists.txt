@@ -91,6 +91,10 @@ add_custom_target(copy_test_files ALL
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_binomial_proportion.sh $<TARGET_FILE_DIR:bench>
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_benchmark_harmonic_mean.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_harmonic_mean.sh $<TARGET_FILE_DIR:bench>
+                   COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/mock_benchmark_long_lines.sh $<TARGET_FILE_DIR:bench>
                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        ${CMAKE_CURRENT_LIST_DIR}/test/unit_test_benchmark_with_changepoint.sh $<TARGET_FILE_DIR:bench>
@@ -120,6 +124,8 @@ add_test (NAME unit_test_benchmark
           COMMAND unit_test_benchmark.sh)
 add_test (NAME unit_test_benchmark_binomial_proportion
         COMMAND unit_test_benchmark_binomial_proportion.sh)
+add_test (NAME unit_test_benchmark_harmonic_mean
+        COMMAND unit_test_benchmark_harmonic_mean.sh)
 add_test (NAME unit_test_benchmark_duration_col
           COMMAND unit_test_benchmark_duration_col.sh)
 add_test (NAME unit_test_benchmark_long_lines

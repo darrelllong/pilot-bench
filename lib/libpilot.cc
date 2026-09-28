@@ -198,6 +198,11 @@ void pilot_set_pi_info(pilot_workload_t* wl, int piid,
     wl->pi_info_[piid].format_unit_reading.format_func_ = format_unit_reading_func;
     wl->pi_info_[piid].reading_must_satisfy = reading_must_satisfy;
     wl->pi_info_[piid].unit_reading_must_satisfy = unit_reading_must_satisfy;
+    wl->pi_info_[piid].reading_mean_method = reading_mean_type;
+    // Unit readings are always averaged arithmetically (see
+    // pilot_workload_t::unit_readings_mean()), so unit_reading_mean_type is
+    // not stored: the result would report a method that was not used.
+    (void) unit_reading_mean_type;
     wl->pi_info_[piid].reading_ci_type = reading_ci_type;
 }
 
@@ -398,6 +403,22 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
         if (0 != rc) {
             result = ERR_WL_FAIL;
             break;
+        }
+
+        // a ratio is averaged by its harmonic mean, which needs positive readings
+        if (readings) {
+            bool bad = false;
+            for (size_t piid = 0; piid < wl->num_of_pi_; ++piid) {
+                if (HARMONIC_MEAN == wl->pi_info_[piid].reading_mean_method && !(readings[piid] > 0)) {
+                    error_log << str(format("PI %1% is a ratio, averaged by its harmonic mean, and its reading must be positive; it is %2%")
+                                     % piid % readings[piid]);
+                    bad = true;
+                }
+            }
+            if (bad) {
+                result = ERR_WRONG_PARAM;
+                break;
+            }
         }
 
         //! TODO validity check: if (wl->short_workload_check_) ...
@@ -1909,6 +1930,10 @@ void pilot_import_benchmark_results(pilot_workload_t *wl, size_t round,
         // handle readings
         if (readings) {
             at_least_one_piid_got_new_data = true;
+            die_if(HARMONIC_MEAN == wl->pi_info_[piid].reading_mean_method && !(readings[piid] > 0),
+                   ERR_WRONG_PARAM,
+                   str(format("PI %1% is a ratio, averaged by its harmonic mean, and its reading must be positive; it is %2%")
+                       % piid % readings[piid]));
             if (round == wl->rounds_) {
                 wl->readings_[piid].push_back(readings[piid]);
                 ++wl->total_num_of_readings_[piid];

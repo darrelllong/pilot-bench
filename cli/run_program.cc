@@ -90,6 +90,7 @@ static FILE*          g_client_out_fs = NULL;
 static size_t         g_duration_col = (size_t)-1; // column of the round duration
 static int            g_num_of_pi = 0;
 static vector<int>    g_pi_col;          // column of each PI in client program's output
+static vector<bool>   g_pi_is_ratio;     // whether each PI is a ratio (type 1)
 static string         g_output_dir;
 static string         g_round_results_dir;
 static bool           g_quiet = false;
@@ -327,6 +328,11 @@ int workload_func(const pilot_workload_t *wl,
         assert(g_pi_col.size() == static_cast<size_t>(g_num_of_pi));
         for (int i = 0; i < g_num_of_pi; ++i) {
             debug_log << str(format("[PI %1%] new reading: %2%") % i % rs[i]);
+            if (g_pi_is_ratio[i] && !(rs[i] > 0)) {
+                fatal_log << str(format("PI %1% is a ratio (type 1), averaged by its harmonic mean, and its reading must be positive; the client program's output was: %2%")
+                                 % i % prog_stdout);
+                return ERR_WL_FAIL;
+            }
             (*readings)[i] = rs[i];
         }
     } catch (const boost::bad_lexical_cast &e) {
@@ -564,6 +570,7 @@ int handle_run_program(int argc, const char** argv) {
                     pi_mean_method = static_cast<pilot_mean_method_t>(tmpi);
                     pi_ci_type = SAMPLE_MEAN;
                 }
+                g_pi_is_ratio.push_back(HARMONIC_MEAN == pi_mean_method);
 
                 bool reading_must_satisfy = false;
                 if (pidata.size() > 4) {

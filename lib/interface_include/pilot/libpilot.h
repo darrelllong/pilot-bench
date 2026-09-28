@@ -302,6 +302,15 @@ typedef double pilot_pi_display_format_func_t(const pilot_workload_t* wl, double
  * requirements
  * @param unit_reading_must_satisfy set if the unit readings must satisfy
  * quality requirements
+ * @param reading_mean_type ARITHMETIC_MEAN for an ordinary value, such as a
+ * time; HARMONIC_MEAN for a ratio, such as a throughput, which is then
+ * analysed through the reciprocals of its readings. The readings of a ratio
+ * must be positive: pilot_run_workload() returns ERR_WRONG_PARAM, and
+ * pilot_import_benchmark_results() ends the program, if one is not.
+ * @param unit_reading_mean_type not used: unit readings are always averaged
+ * arithmetically
+ * @param reading_ci_type SAMPLE_MEAN, or BINOMIAL_PROPORTION for readings
+ * that are 0 or 1
  */
 DLL_PUBLIC void pilot_set_pi_info(pilot_workload_t* wl, int piid,
         const char *pi_name,
@@ -555,11 +564,17 @@ DLL_PUBLIC double pilot_subsession_mean_p(const double *data, size_t n, pilot_me
 
 /**
  * \brief Calculate the subsession covariance of data
- * \details n/q must be greater than or equal 2
+ * \details n/q must be greater than or equal 2. For HARMONIC_MEAN the data
+ * must be positive; they are analysed through their reciprocals y = 1/x:
+ * sample_mean must be the harmonic mean H of the data, the centre is 1/H,
+ * the value of a subsession is the mean of its reciprocals, and the result
+ * is H^4 times the covariance of those values (the delta method), in the
+ * units of the data squared. pilot_subsession_var_p() is the same for the variance,
+ * so that their ratio, the autocorrelation coefficient, is that of y.
  * @param[in] data the input data
  * @param n the number of samples of data
  * @param q the subsession size
- * @param sample_mean the sample mean
+ * @param sample_mean the sample mean (the harmonic mean for HARMONIC_MEAN)
  * @return the calculated covariance
  */
 DLL_PUBLIC double pilot_subsession_auto_cov_p(const double *data, size_t n, size_t q, double sample_mean, pilot_mean_method_t mean_method) NOEXCEPT;
@@ -769,7 +784,13 @@ DLL_PUBLIC int pilot_optimal_subsession_size_p(const double *data, size_t n,
  * @param n size of the input data
  * @param q size of each subsession
  * @param confidence_level the probability that the real mean falls within the confidence interval, e.g., .95
- * @return the width of the confidence interval
+ * @return the width of the confidence interval. For HARMONIC_MEAN, whose data
+ * must be positive, the interval is [1 / (ybar + d), 1 / (ybar - d)], where
+ * ybar is the mean of the reciprocals of the data and d = t s_y / sqrt(n/q);
+ * it is not symmetric about the harmonic mean 1 / ybar, and the width is
+ * infinite when ybar <= d. When W is finite, the ends can be recovered from
+ * the mean H and the width W: they are 1 / (ybar + d) and 1 / (ybar - d),
+ * with ybar = 1 / H and d = W ybar^2 / (1 + sqrt(1 + W^2 ybar^2)).
  */
 DLL_PUBLIC double pilot_subsession_confidence_interval_p(const double *data, size_t n, size_t q,
                                                          double confidence_level,
@@ -840,7 +861,8 @@ DLL_PUBLIC int pilot_optimal_sample_size_for_eq_test(double baseline_mean,
  * @param confidence_level
  * @param max_autocorrelation_coefficient
  * @return true if the calculation was successful; false if there was not
- * enough data for calculation
+ * enough data for calculation, or if no finite sample size reaches the
+ * required width (for example a required width of 0)
  */
 DLL_PUBLIC bool
 pilot_optimal_sample_size_p(const double *data, size_t n,
@@ -1012,6 +1034,8 @@ DLL_PUBLIC void pilot_pi_unit_readings_iter_destroy(pilot_pi_unit_readings_iter_
  * @param num_of_unit_readings the number of unit readings
  * @param[in] unit_readings the unit readings of each PI, can be NULL if there
  * is no unit readings in this round
+ * \details The reading of a PI whose mean method is HARMONIC_MEAN must be
+ * positive; if it is not, the program ends with ERR_WRONG_PARAM.
  */
 DLL_PUBLIC void pilot_import_benchmark_results(pilot_workload_t *wl, size_t round,
                                     size_t work_amount,
