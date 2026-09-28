@@ -31,6 +31,9 @@ rc=0
     -- ./mock_benchmark_harmonic_mean.sh >"$TMPFILE" 2>&1 || rc=$?
 [ "$rc" -eq 12 ]
 grep -q "^0,20,1.70213," "${RESULT_DIR}/h/pi_results.csv"
+# The session found no subsession size that meets the autocorrelation limit,
+# so it has no variance and no CI; they are not those of an earlier analysis.
+grep -q "^0,20,1.70213,1.70213,nan,nan,nan,nan," "${RESULT_DIR}/h/pi_results.csv"
 
 rm -f /tmp/pilot_mock_benchmark_harmonic_mean_round.txt
 rc=0

@@ -48,6 +48,8 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cmath>
+#include <limits>
 #include <algorithm>
 #include <boost/format.hpp>
 #include <chrono>
@@ -263,6 +265,22 @@ static ssize_t _calc_required_num_of_readings(const pilot_workload_t *wl,
     }
 }
 
+// The variance of f(X), for a format f, by the delta method: f'(m)^2 Var(X),
+// with f' by a central difference over the step actually taken, so that it
+// is exactly 1 for the identity. For f(x) = a + c x it is c^2 Var(X), up to
+// rounding. The step is scaled by |m|, or by the standard deviation when m is
+// 0, so that it is neither 0 nor out of scale with the data.
+template <typename F>
+static double format_variance(F f, double m, double var) {
+    double scale = std::max(std::abs(m), std::sqrt(var));
+    if (!(scale > 0) || !std::isfinite(scale)) scale = 1;
+    double h = 1e-6 * scale;
+    if (!(h > 0)) h = 1e-6;
+    const double xp = m + h, xm = m - h;
+    const double d = (f(xp) - f(xm)) / (xp - xm);
+    return d * d * var;
+}
+
 void pilot_workload_t::refresh_analytical_result(void) const {
     if (raw_data_changed_time_ <= analytical_result_update_time_) {
         debug_log << "No need to refresh analytical result";
@@ -320,7 +338,11 @@ void pilot_workload_t::refresh_analytical_result(void) const {
                 }
             }
 
-            double sm, var_rt, subsession_var_rt, ci, cif_low, cif_high;
+            // A variance is formatted by the delta method (format_variance()); it
+            // was the formatted mean times var / mean, which is c Var(X), not
+            // c^2 Var(X), for f(x) = c x, and not a number when the mean is 0.
+            double sm, ci, cif_low, cif_high;
+            auto fr = [this, piid](double x) { return format_reading(piid, x); };
             size_t q;
 
 #define ANALYZE_READINGS(prefix, data, size) \
@@ -333,24 +355,26 @@ void pilot_workload_t::refresh_analytical_result(void) const {
                     1,                                                                                \
                     sm,                                                                               \
                     analytical_result_.readings_mean_method[piid]);                                   \
-            var_rt = prefix##_var[piid] / sm;                                                         \
-            prefix##_var_formatted[piid] = prefix##_mean_formatted[piid] * var_rt;                    \
+            prefix##_var_formatted[piid] = format_variance(fr, sm, prefix##_var[piid]);               \
             prefix##_autocorrelation_coefficient[piid] =                                              \
                     pilot_subsession_autocorrelation_coefficient(data,                                \
                             size, 1, prefix##_mean[piid],                                             \
                             analytical_result_.readings_mean_method[piid]);                           \
+            /* q is set when a subsession size is found, even if no finite */                           \
+            /* sample size can reach the required width */                                            \
+            q = 0;                                                                                    \
             prefix##_required_sample_size[piid] = _calc_required_num_of_readings(this,                \
                     data, size, &q,                                                                   \
                     analytical_result_.readings_mean_method[piid],                                    \
                     analytical_result_.readings_ci_type[piid]);                                       \
-            if (prefix##_required_sample_size[piid] > 0) {                                            \
+            if (q >= 1) {                                                                             \
                 prefix##_optimal_subsession_size[piid] = q;                                           \
                 prefix##_optimal_subsession_var[piid] =                                               \
                         pilot_subsession_var(data, size,                                              \
                                 prefix##_optimal_subsession_size[piid], prefix##_mean[piid],          \
                                 analytical_result_.readings_mean_method[piid]);                       \
-                subsession_var_rt = prefix##_optimal_subsession_var[piid] / sm;                       \
-                prefix##_optimal_subsession_var_formatted[piid] = prefix##_mean_formatted[piid] * subsession_var_rt; \
+                prefix##_optimal_subsession_var_formatted[piid] =                                     \
+                        format_variance(fr, sm, prefix##_optimal_subsession_var[piid]);               \
                 prefix##_optimal_subsession_autocorrelation_coefficient[piid] =                       \
                         pilot_subsession_autocorrelation_coefficient(data,                            \
                                 size, prefix##_optimal_subsession_size[piid],                         \
@@ -365,7 +389,15 @@ void pilot_workload_t::refresh_analytical_result(void) const {
                 cif_high = format_reading(piid, sm + ci/2);                                           \
                 prefix##_optimal_subsession_ci_width_formatted[piid] = abs(cif_high - cif_low);       \
             } else {                                                                                  \
+                /* No subsession size was found (it meets the autocorrelation */                       \
+                /* limit, and there are at least 3 readings), so these have no */                      \
+                /* value; they used to keep those of an earlier analysis. */                           \
                 prefix##_optimal_subsession_size[piid] = -1;                                          \
+                prefix##_optimal_subsession_var[piid] = std::numeric_limits<double>::quiet_NaN();     \
+                prefix##_optimal_subsession_var_formatted[piid] = std::numeric_limits<double>::quiet_NaN(); \
+                prefix##_optimal_subsession_autocorrelation_coefficient[piid] = std::numeric_limits<double>::quiet_NaN(); \
+                prefix##_optimal_subsession_ci_width[piid] = std::numeric_limits<double>::quiet_NaN(); \
+                prefix##_optimal_subsession_ci_width_formatted[piid] = std::numeric_limits<double>::quiet_NaN(); \
             }
 
             // Dominant segment analysis
@@ -374,35 +406,86 @@ void pilot_workload_t::refresh_analytical_result(void) const {
             // Raw data analysis
             ANALYZE_READINGS(analytical_result_.readings_raw, readings_[piid].data(), readings_[piid].size())
 #undef ANALYZE_READINGS
-        } /* if (analytical_result_.readings_num[piid] >= 2) */
+        } else { /* if (analytical_result_.readings_num[piid] >= 2) */
+            // Nothing can be calculated from fewer than 2 readings but the
+            // mean of 1; the rest has no value, and is not left from before.
+            const double nan = std::numeric_limits<double>::quiet_NaN();
+            const size_t n = analytical_result_.readings_num[piid];
+            const double m = 1 == n ? readings_[piid][0] : nan;
+#define CLEAR_READINGS(prefix)                                                                        \
+            prefix##_mean[piid] = m;                                                                  \
+            prefix##_mean_formatted[piid] = 1 == n ? format_reading(piid, m) : nan;                   \
+            prefix##_var[piid] = nan;                                                                 \
+            prefix##_var_formatted[piid] = nan;                                                       \
+            prefix##_autocorrelation_coefficient[piid] = nan;                                         \
+            prefix##_required_sample_size[piid] = -1;                                                 \
+            prefix##_optimal_subsession_size[piid] = -1;                                              \
+            prefix##_optimal_subsession_var[piid] = nan;                                              \
+            prefix##_optimal_subsession_var_formatted[piid] = nan;                                    \
+            prefix##_optimal_subsession_autocorrelation_coefficient[piid] = nan;                      \
+            prefix##_optimal_subsession_ci_width[piid] = nan;                                         \
+            prefix##_optimal_subsession_ci_width_formatted[piid] = nan;
+            CLEAR_READINGS(analytical_result_.readings)
+            CLEAR_READINGS(analytical_result_.readings_raw)
+#undef CLEAR_READINGS
+        }
 
         // Unit readings analysis
         double sm = unit_readings_mean(piid);
         analytical_result_.unit_readings_num[piid] = total_num_of_unit_readings_[piid];
         if (0 == total_num_of_unit_readings_[piid]) {
-            // no data for the following calculation
+            // no data for the following calculation; nothing is left from before
+            const double nan = std::numeric_limits<double>::quiet_NaN();
+            analytical_result_.unit_readings_mean[piid] = nan;
+            analytical_result_.unit_readings_mean_formatted[piid] = nan;
+            analytical_result_.unit_readings_var[piid] = nan;
+            analytical_result_.unit_readings_var_formatted[piid] = nan;
+            analytical_result_.unit_readings_autocorrelation_coefficient[piid] = nan;
+            analytical_result_.unit_readings_required_sample_size[piid] = -1;
+            analytical_result_.unit_readings_optimal_subsession_size[piid] = -1;
+            analytical_result_.unit_readings_optimal_subsession_var[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_autocorrelation_coefficient[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_ci_width[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_ci_width_formatted[piid] = nan;
+            analytical_result_.unit_readings_mean_method[piid] = pi_info_[piid].unit_reading_mean_method;
+            analytical_result_.unit_readings_required_sample_size_is_from_user[piid] = 0;
             continue;
         }
         analytical_result_.unit_readings_mean_method[piid] = pi_info_[piid].unit_reading_mean_method;
         analytical_result_.unit_readings_mean[piid] = sm;
         analytical_result_.unit_readings_mean_formatted[piid] = format_unit_reading(piid, sm);
         analytical_result_.unit_readings_var[piid] = unit_readings_var(piid, 1);
-        double var_rt = analytical_result_.unit_readings_var[piid] / sm;
-        analytical_result_.unit_readings_var_formatted[piid] = var_rt * analytical_result_.unit_readings_mean_formatted[piid];
+        // formatted by the delta method; see the readings above
+        auto fur = [this, piid](double x) { return format_unit_reading(piid, x); };
+        analytical_result_.unit_readings_var_formatted[piid] =
+                format_variance(fur, sm, analytical_result_.unit_readings_var[piid]);
         analytical_result_.unit_readings_autocorrelation_coefficient[piid] = unit_readings_autocorrelation_coefficient(piid, 1, ARITHMETIC_MEAN);
-        size_t q;
+        // q is set when a subsession size is found, even if no finite
+        // sample size can reach the required width
+        size_t q = 0;
 
         // We already use our own _calc_required_num_of_readings() no matter if calc_required_unit_readings_func_ is set because
         // the latter may use our calculation as an input.
-        if ((analytical_result_.unit_readings_required_sample_size[piid] =
+        analytical_result_.unit_readings_required_sample_size[piid] =
                 _calc_required_num_of_readings(this, pilot_pi_unit_readings_iter_t(this, piid),
-                        total_num_of_unit_readings_[piid], &q, ARITHMETIC_MEAN, SAMPLE_MEAN)) < 0) {
+                        total_num_of_unit_readings_[piid], &q, ARITHMETIC_MEAN, SAMPLE_MEAN);
+        if (q < 1) {
+            // No subsession size was found (it meets the autocorrelation
+            // limit, and there are at least 3 readings), so these have no
+            // value; they used to keep those of an earlier analysis.
+            const double nan = std::numeric_limits<double>::quiet_NaN();
             analytical_result_.unit_readings_optimal_subsession_size[piid] = -1;
+            analytical_result_.unit_readings_optimal_subsession_var[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_autocorrelation_coefficient[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_ci_width[piid] = nan;
+            analytical_result_.unit_readings_optimal_subsession_ci_width_formatted[piid] = nan;
         } else {
             analytical_result_.unit_readings_optimal_subsession_size[piid] = q;
             analytical_result_.unit_readings_optimal_subsession_var[piid] = unit_readings_var(piid, q);
-            double subsession_var_rt = analytical_result_.unit_readings_optimal_subsession_var[piid] / sm;
-            analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] = subsession_var_rt * analytical_result_.unit_readings_mean_formatted[piid];
+            analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] =
+                    format_variance(fur, sm, analytical_result_.unit_readings_optimal_subsession_var[piid]);
             analytical_result_.unit_readings_optimal_subsession_autocorrelation_coefficient[piid] = unit_readings_autocorrelation_coefficient(piid, q, ARITHMETIC_MEAN);
             analytical_result_.unit_readings_optimal_subsession_ci_width[piid] =
                     pilot_subsession_confidence_interval(pilot_pi_unit_readings_iter_t(this, piid), total_num_of_unit_readings_[piid], q, confidence_level_, ARITHMETIC_MEAN, SAMPLE_MEAN);
@@ -515,21 +598,31 @@ char* pilot_workload_t::text_workload_summary(void) const {
             s << prefix << "sample variance: " << analytical_result_.unit_readings_var_formatted[piid] << " " << pi_info_[piid].unit << endl;
             s << prefix << "sample variance to sample mean ratio: " << var_rt * 100 << "%" << endl;
             s << prefix << "sample autocorrelation coefficient: " << analytical_result_.unit_readings_autocorrelation_coefficient[piid] << endl;
-            size_t q = analytical_result_.unit_readings_optimal_subsession_size[piid];
+            // Both are -1 when they could not be calculated, so they are signed
+            const ssize_t q = analytical_result_.unit_readings_optimal_subsession_size[piid];
+            const ssize_t min_ur = analytical_result_.unit_readings_required_sample_size[piid];
             s << prefix << "optimal subsession size (q): " << q << endl;
             s << prefix << "subsession variance (q=" << q << "): " << analytical_result_.unit_readings_optimal_subsession_var_formatted[piid] << endl;
             s << prefix << "subsession variance (q=" << q << ") to sample mean ratio: " << analytical_result_.unit_readings_optimal_subsession_var[piid] * 100 / sm << "%" << endl;
-            size_t min_ur = analytical_result_.unit_readings_required_sample_size[piid];
             s << prefix << "minimum numbers of unit readings required (q=" << q << "): " << min_ur << endl;
             s << prefix << "current number of significant unit readings: " << cur_ur << endl;
-            if (cur_ur >= min_ur) {
+            const bool from_user = analytical_result_.unit_readings_required_sample_size_is_from_user[piid];
+            if (from_user && min_ur < 0) {
+                s << prefix << "the required sample size from calc_required_unit_readings_func is " << min_ur << "." << endl;
+            } else if (from_user && static_cast<ssize_t>(cur_ur) >= min_ur) {
+                s << prefix << "sample size large enough (calc_required_unit_readings_func)." << endl;
+            } else if (from_user) {
+                s << prefix << "sample size is not yet the one that calc_required_unit_readings_func requires." << endl;
+            } else if (q < 1) {
+                s << prefix << "no subsession size meets the autocorrelation limit yet, or there are fewer than 3 unit readings." << endl;
+            } else if (min_ur < 0) {
+                s << prefix << "no number of unit readings can achieve the desired width of confidence interval " << get_required_ci(sm) << endl;
+            } else if (static_cast<ssize_t>(cur_ur) >= min_ur) {
                 s << prefix << "sample size large enough." << endl;
+            } else if (cur_ur / static_cast<size_t>(q) < min_sample_size_) {
+                s << prefix << "sample size is smaller than the sample size threshold (" << min_sample_size_ << ")" << endl;
             } else {
-                if (cur_ur / q < min_sample_size_) {
-                    s << prefix << "sample size is smaller than the sample size threshold (" << min_sample_size_ << ")" << endl;
-                } else if (cur_ur < min_ur) {
-                    s << prefix << "sample size is not yet large enough to achieve the desired width of confidence interval " << get_required_ci(sm) << endl;
-                }
+                s << prefix << "sample size is not yet large enough to achieve the desired width of confidence interval " << get_required_ci(sm) << endl;
             }
             double ci = analytical_result_.unit_readings_optimal_subsession_ci_width_formatted[piid];
             double ci_low = smf - ci / 2;

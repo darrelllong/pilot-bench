@@ -358,7 +358,7 @@ private:
                 double var = wi_.unit_readings_var[piid];
                 double var_rt = var / sm;
                 draw_data_line("sample mean: ", format_ur(NULL, sm), pi_unit);
-                draw_data_line("variance: ", var_rt * format_ur(NULL, sm), pi_unit);
+                draw_data_line("variance: ", wi_.unit_readings_var_formatted[piid], pi_unit);
 
                 use_default_color();
                 std::string label = "variance to mean ratio: ";
@@ -373,29 +373,36 @@ private:
                 draw_data_line("autocor. coef.: ",
                                wi_.unit_readings_autocorrelation_coefficient[piid],
                                "");
-                size_t q = wi_.unit_readings_optimal_subsession_size[piid];
+                // both are -1 when they could not be calculated
+                const ssize_t q = wi_.unit_readings_optimal_subsession_size[piid];
                 draw_data_line("optimal subsession size (q): ", q, "");
                 double subvar = wi_.unit_readings_optimal_subsession_var[piid];
                 double subvar_rt = subvar / sm;
-                draw_data_line("subsession var: ", subvar_rt * format_ur(NULL, sm), "");
+                draw_data_line("subsession var: ", wi_.unit_readings_optimal_subsession_var_formatted[piid], "");
 
                 use_default_color();
                 label = "subvar. to mean ratio: ";
                 draw_buf_ << label;
                 flush_buf();
                 use_highlight_color();
-                draw_buf_ << std::setw(inner_w_ - label.size() - 1) << subvar_rt * 100 / sm << "%";
+                draw_buf_ << std::setw(inner_w_ - label.size() - 1) << subvar_rt * 100 << "%";
                 flush_buf_new_line();
 
-                size_t min_ur = wi_.unit_readings_required_sample_size[piid];
+                const ssize_t min_ur = wi_.unit_readings_required_sample_size[piid];
                 draw_data_line("min. sample size:", min_ur, "");
                 draw_data_line("current sample size: ", cur_ur, "");
 
                 use_highlight_color();
-                if (cur_ur >= min_ur && cur_ur / q >= 200) {
+                if (wi_.unit_readings_required_sample_size_is_from_user[piid]) {
+                    draw_buf_ << (min_ur >= 0 && static_cast<ssize_t>(cur_ur) >= min_ur
+                                  ? "Sample size large enough (user function)"
+                                  : "Sample size not yet what the user function requires");
+                } else if (q < 1 || min_ur < 0) {
+                    draw_buf_ << "Sample size cannot be calculated yet";
+                } else if (static_cast<ssize_t>(cur_ur) >= min_ur && cur_ur / static_cast<size_t>(q) >= 200) {
                     draw_buf_ << "Sample size large enough";
                 } else {
-                    if (cur_ur < min_ur) {
+                    if (static_cast<ssize_t>(cur_ur) < min_ur) {
                         draw_buf_ << "Sample size too small";
                     } else {
                         draw_buf_ << "Sample size MIGHT be too small" << std::endl;
@@ -403,12 +410,11 @@ private:
                 }
                 flush_buf_new_line();
 
-                double ci = wi_.unit_readings_optimal_subsession_ci_width[piid];
-                double ci_rt = ci / sm;
-                double ci_low = format_ur(NULL, sm) * (1 - ci_rt/2);
-                double ci_high = format_ur(NULL, sm) * (1 + ci_rt/2) ;
+                double ci = wi_.unit_readings_optimal_subsession_ci_width_formatted[piid];
+                double ci_low = format_ur(NULL, sm) - ci / 2;
+                double ci_high = format_ur(NULL, sm) + ci / 2;
                 use_default_color();
-                draw_buf_ << "95% confidence interval (CI): ";
+                draw_buf_ << "confidence interval (CI): ";
                 flush_buf_new_line();
 
                 // calculate the len of the CI line
@@ -437,7 +443,7 @@ private:
 
                 use_highlight_color();
                 std::string tail = " of mean";
-                draw_buf_ << std::setw(inner_w_ - tail.size() - 1) << ci_rt * 100 << "%";
+                draw_buf_ << std::setw(inner_w_ - tail.size() - 1) << wi_.unit_readings_optimal_subsession_ci_width[piid] / sm * 100 << "%";
                 flush_buf();
                 use_default_color();
                 draw_buf_ << tail;

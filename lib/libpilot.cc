@@ -453,7 +453,7 @@ int pilot_run_workload(pilot_workload_t *wl) noexcept {
                 ss << wl->pi_info_[piid].name << ": ";
                 if (4 < wl->analytical_result_.readings_num[piid]) {
                     ss << "R m" << setprecision(4) << wl->analytical_result_.readings_mean_formatted[piid];
-                    if (wl->analytical_result_.readings_required_sample_size[piid] > 0) {
+                    if (wl->analytical_result_.readings_optimal_subsession_size[piid] > 0) {
                         ss << " c" << wl->analytical_result_.readings_optimal_subsession_ci_width_formatted[piid]
                            << " v" << wl->analytical_result_.readings_optimal_subsession_var_formatted[piid]
                            << " ";

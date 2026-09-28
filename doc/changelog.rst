@@ -164,6 +164,55 @@ Ratios
 * **The CI of the unit readings is at the session's confidence level.** It
   was at 95%.
 
+Reported Results
+~~~~~~~~~~~~~~~~
+
+* **A CI is not reported from an earlier analysis.** For the readings, the
+  variance, autocorrelation, and CI of the optimal subsession were computed
+  only when the required sample size was greater than 0, and otherwise kept
+  the values of the last analysis that computed them; for the unit
+  readings, only when it was 0 or more. A session that ended when no
+  subsession size met the autocorrelation limit, for example at its time
+  limit, reported that CI, of fewer readings, as its own, in
+  ``pi_results.csv`` and in its summary; so did a session whose required
+  sample size could not be calculated, for example of a mean of exactly 0.
+  They are now computed whenever a subsession size has been found, and are
+  NaN, with a subsession size of -1, when none has. For the unit readings
+  the stale values were in the summary, the text interface, and the
+  analytical result, but not in ``pi_results.csv``, which leaves those
+  columns empty.
+* **Fewer than 2 readings, or no unit readings.** Nothing was written to
+  the analytical result, which held whatever its memory held: a single
+  reading of 5 was reported with a mean of 0. The mean of a single reading
+  is now the reading, and everything that cannot be calculated is NaN,
+  with sizes of -1.
+
+  *On upgrading:* ``pi_results.csv``, the quiet output of ``bench``, and
+  the fields of the analytical result can now hold ``nan`` where there is
+  no value.
+* **A variance is formatted by the delta method**, :math:`f'(m)^2
+  \operatorname{Var}(X)`, with :math:`f'` by a central difference, which is
+  :math:`c^2 \operatorname{Var}(X)` for a format :math:`f(x) = a + c x`. It
+  was the formatted mean times var / mean, which is
+  :math:`c \operatorname{Var}(X)`, not :math:`c^2 \operatorname{Var}(X)`, for
+  :math:`f(x) = c x`, so it was right only for the identity: the variance of
+  every PI with a unit-converting format was wrong, and changes now by the
+  factor :math:`c`. It did not hold for other formats either, such as the
+  reciprocal one of ``lib/test/func_test_seq_write.cc``, and it was not a
+  number when the mean was 0. The text interface computed it the same way, and now uses the
+  analytical result.
+* **The summary of the unit readings**, and the text interface, printed a
+  subsession size and a required sample size of -1 as
+  18446744073709551615, and then said that the sample size was smaller
+  than the threshold. They now print -1 and say which of the two could not
+  be calculated. The text interface's ratio of the subsession variance to
+  the mean divided by the mean twice.
+* **The progress line** printed an empty CI when the required sample size
+  was not greater than 0; it now prints the CI whenever there is one.
+* **The quiet output of** ``bench run_program`` tested the pointer to the
+  numbers of readings, not the number of readings of each PI, so a PI with
+  no readings printed its fields in place of empty ones.
+
 WPS Analysis
 ~~~~~~~~~~~~
 

@@ -653,24 +653,24 @@ struct pilot_analytical_result_t {
     size_t  num_of_rounds;
     double  session_duration;          //! the total session duration so far
     // Readings analysis
-    size_t* readings_num;              //! the following readings fields are undefined if readings_num is 0
+    size_t* readings_num;              //! with fewer than 2 readings, the following fields that cannot be calculated are NaN, and the sizes -1
     pilot_mean_method_t* readings_mean_method;
     pilot_confidence_interval_type_t* readings_ci_type;
     size_t* readings_last_changepoint;
 
     // Dominant segment analysis (these info. are preferred to raw data)
-    double* readings_mean;             //! the mean of all readings so far according to PI reading's mean method; is undefined if readings_num < 2
-    double* readings_mean_formatted;   //! the mean after being formatted by format_reading() NOEXCEPT; is undefined if readings_num < 2
-    double* readings_var;              //! is undefined if readings_num < 2
-    double* readings_var_formatted;    //! is undefined if readings_num < 2
-    double* readings_autocorrelation_coefficient; //! is undefined if readings_num < 2
+    double* readings_mean;             //! the mean of all readings so far according to PI reading's mean method; the reading if readings_num is 1, NaN if it is 0
+    double* readings_mean_formatted;   //! the mean after being formatted by format_reading() NOEXCEPT; NaN if readings_num is 0
+    double* readings_var;              //! is NaN if readings_num < 2
+    double* readings_var_formatted;    //! is NaN if readings_num < 2; formatted by the delta method
+    double* readings_autocorrelation_coefficient; //! is NaN if readings_num < 2
     ssize_t* readings_required_sample_size;  //! is -1 if not enough data
-    ssize_t* readings_optimal_subsession_size; //! is undefined if readings_required_sample_size < 0
-    double* readings_optimal_subsession_var; //! is undefined if readings_required_sample_size < 0
-    double* readings_optimal_subsession_var_formatted; //! is undefined if readings_required_sample_size < 0
-    double* readings_optimal_subsession_autocorrelation_coefficient; //! is undefined if readings_required_sample_size < 0
-    double* readings_optimal_subsession_ci_width; //! is undefined if readings_required_sample_size < 0
-    double* readings_optimal_subsession_ci_width_formatted; //! is undefined if readings_required_sample_size < 0
+    ssize_t* readings_optimal_subsession_size; //! is -1 if no subsession size meets the autocorrelation limit, or there are fewer than 3 readings
+    double* readings_optimal_subsession_var; //! is NaN if readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_optimal_subsession_var_formatted; //! is NaN if readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_optimal_subsession_autocorrelation_coefficient; //! is NaN if readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_optimal_subsession_ci_width; //! is NaN if readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_optimal_subsession_ci_width_formatted; //! is NaN if readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
 
     // Raw data uses all values
     double* readings_raw_mean;             //! the mean of all readings so far according to PI reading's mean method
@@ -679,12 +679,12 @@ struct pilot_analytical_result_t {
     double* readings_raw_var_formatted;
     double* readings_raw_autocorrelation_coefficient;
     ssize_t* readings_raw_required_sample_size; //! is -1 if not enough data
-    ssize_t* readings_raw_optimal_subsession_size; //! is undefined if readings_raw_required_sample_size < 0
-    double* readings_raw_optimal_subsession_var; //! is undefined if readings_raw_required_sample_size < 0
-    double* readings_raw_optimal_subsession_var_formatted; //! is undefined if readings_raw_required_sample_size < 0
-    double* readings_raw_optimal_subsession_autocorrelation_coefficient; //! is undefined if readings_raw_required_sample_size < 0
-    double* readings_raw_optimal_subsession_ci_width; //! is undefined if readings_raw_required_sample_size < 0
-    double* readings_raw_optimal_subsession_ci_width_formatted; //! is undefined if readings_raw_required_sample_size < 0
+    ssize_t* readings_raw_optimal_subsession_size; //! is -1 if no subsession size meets the autocorrelation limit, or there are fewer than 3 readings
+    double* readings_raw_optimal_subsession_var; //! is NaN if readings_raw_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_raw_optimal_subsession_var_formatted; //! is NaN if readings_raw_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_raw_optimal_subsession_autocorrelation_coefficient; //! is NaN if readings_raw_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_raw_optimal_subsession_ci_width; //! is NaN if readings_raw_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* readings_raw_optimal_subsession_ci_width_formatted; //! is NaN if readings_raw_optimal_subsession_size is -1 (no subsession size found, or too few readings)
 
     // Unit-readings analysis
     size_t* unit_readings_num;
@@ -694,12 +694,12 @@ struct pilot_analytical_result_t {
     double* unit_readings_var;
     double* unit_readings_var_formatted;
     double* unit_readings_autocorrelation_coefficient;
-    ssize_t* unit_readings_optimal_subsession_size; //! is -1 if not enough data
-    double* unit_readings_optimal_subsession_var; //! is undefined if unit_readings_optimal_subsession_size < 0
-    double* unit_readings_optimal_subsession_var_formatted; //! is undefined if unit_readings_optimal_subsession_size < 0
-    double* unit_readings_optimal_subsession_autocorrelation_coefficient; //! is undefined if unit_readings_optimal_subsession_size < 0
-    double* unit_readings_optimal_subsession_ci_width; //! is undefined if unit_readings_optimal_subsession_size < 0
-    double* unit_readings_optimal_subsession_ci_width_formatted; //! is undefined if unit_readings_optimal_subsession_size < 0
+    ssize_t* unit_readings_optimal_subsession_size; //! is -1 if no subsession size meets the autocorrelation limit, or there are fewer than 3 unit readings
+    double* unit_readings_optimal_subsession_var; //! is NaN if unit_readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* unit_readings_optimal_subsession_var_formatted; //! is NaN if unit_readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* unit_readings_optimal_subsession_autocorrelation_coefficient; //! is NaN if unit_readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* unit_readings_optimal_subsession_ci_width; //! is NaN if unit_readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
+    double* unit_readings_optimal_subsession_ci_width_formatted; //! is NaN if unit_readings_optimal_subsession_size is -1 (no subsession size found, or too few readings)
     ssize_t* unit_readings_required_sample_size; //! is -1 if not enough data
     int*    unit_readings_required_sample_size_is_from_user; //! Whether unit_readings_required_sample_size is from the calc_required_unit_readings_func
 

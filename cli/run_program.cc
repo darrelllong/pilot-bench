@@ -761,7 +761,7 @@ int handle_run_program(int argc, const char** argv) {
             for (size_t piid = 0; piid < r->num_of_pi; ++piid) {
                 // format: piid,mean,ci,var,ds_begin,raw_mean,raw_ci,raw_var,...
                 cout << format("%1%,") % piid;
-                if (0 != r->readings_num) {
+                if (0 != r->readings_num[piid]) {
                     cout << format("%1%,%2%,%3%,%4%,%5%,%6%,%7%")
                                     % r->readings_mean_formatted[piid]
                                     % r->readings_optimal_subsession_ci_width_formatted[piid]
