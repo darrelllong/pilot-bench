@@ -61,7 +61,7 @@ captures correlation between adjacent samples, against a limit :math:`L`:
 by the preset: 0.8 for ``quick``, 0.2 for ``normal``, and 0.1 for
 ``strict``. The range :math:`[-0.1, 0.1]` is the one that Ferrari considers
 negligible autocorrelation and safe for CI calculations [ferrari:78]_; a
-wider range gives a CI that can be too narrow (see the warning on the
+wider range gives a CI that can be too narrow (see the guidance on the
 ``quick`` preset in :doc:`../reference`). The change-point test always uses
 0.1 for its own subsession size (see
 :doc:`warm-up-and-cool-down-phase-detection`).

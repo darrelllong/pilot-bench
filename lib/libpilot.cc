@@ -48,6 +48,7 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <limits>
 #include <boost/format.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
