@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Unit test for Pilot CLI tool: a PI of type 1 (a ratio) is averaged by its
 # harmonic mean, and a PI of type 0 by its arithmetic mean. The readings are
-# 2 4 1 4 2 1 4 1 2 2 4 1 1 4 2 4 1 2 1 4: their harmonic mean is
-# 20 / 11.75 = 1.70213 and their arithmetic mean is 2.35. Twenty readings
-# are not enough for the session to converge: it ends when the mock
-# benchmark has no more, and bench returns 12, which is expected here.
+# 2 4 1 4 2 1 4 1 2 2 4 1 1 4 2 4 1 2 1 4. Under the default preset the
+# ratio converges after 12 readings, whose harmonic mean is 12 / 7 = 1.71429
+# (their arithmetic mean would be 2.33333); the ordinary value converges
+# after 10, whose arithmetic mean is 2.3.
 #
 # The Pilot tool and library is free software; you can redistribute it
 # and/or modify it under the terms of the GNU Lesser General Public
@@ -29,18 +29,15 @@ rm -f /tmp/pilot_mock_benchmark_harmonic_mean_round.txt
 rc=0
 ./bench run_program -o ${RESULT_DIR}/h --ci-perc 0.9 --min-sample-size 10 --pi "rate,,0,1,1" \
     -- ./mock_benchmark_harmonic_mean.sh >"$TMPFILE" 2>&1 || rc=$?
-[ "$rc" -eq 12 ]
-grep -q "^0,20,1.70213," "${RESULT_DIR}/h/pi_results.csv"
-# The session found no subsession size that meets the autocorrelation limit,
-# so it has no variance and no CI; they are not those of an earlier analysis.
-grep -q "^0,20,1.70213,1.70213,nan,nan,nan,nan," "${RESULT_DIR}/h/pi_results.csv"
+[ "$rc" -eq 0 ]
+grep -q "^0,12,1.71429,1.71429," "${RESULT_DIR}/h/pi_results.csv"
 
 rm -f /tmp/pilot_mock_benchmark_harmonic_mean_round.txt
 rc=0
 ./bench run_program -o ${RESULT_DIR}/a --ci-perc 0.9 --min-sample-size 10 --pi "rate,,0,0,1" \
     -- ./mock_benchmark_harmonic_mean.sh >"$TMPFILE" 2>&1 || rc=$?
-[ "$rc" -eq 12 ]
-grep -q "^0,20,2.35," "${RESULT_DIR}/a/pi_results.csv"
+[ "$rc" -eq 0 ]
+grep -q "^0,10,2.3,2.3," "${RESULT_DIR}/a/pi_results.csv"
 
 # A reading of a ratio must be positive: the round fails with a message
 ZERO="${RESULT_DIR}/zero.sh"

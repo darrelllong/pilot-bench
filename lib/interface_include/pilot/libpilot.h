@@ -1078,8 +1078,11 @@ DLL_PUBLIC void pilot_set_required_confidence_interval(pilot_workload_t *wl, dou
  * \brief Set the confidence level used when computing confidence intervals.
  * @param[in] wl pointer to the workload struct
  * @param confidence_level probability that the true mean falls within the
- *        reported interval, e.g. 0.90 or 0.95 (default: 0.95).
- * @return previous confidence level
+ *        reported interval, e.g. 0.90 or 0.95 (default: 0.95). It must be
+ *        in (0, 1); another value is not set. A change has the analysis
+ *        done again.
+ * @return previous confidence level, or NaN if confidence_level was not in
+ *         (0, 1) and was not set
  */
 DLL_PUBLIC double pilot_set_confidence_level(pilot_workload_t *wl, double confidence_level) NOEXCEPT;
 
@@ -1179,6 +1182,16 @@ DLL_PUBLIC size_t pilot_set_session_desired_duration(pilot_workload_t *wl, size_
  */
 DLL_PUBLIC size_t pilot_set_session_duration_limit(pilot_workload_t *wl, size_t sec) NOEXCEPT;
 
+/**
+ * \brief Set the limit L of the lag-1 autocorrelation coefficient of the
+ * subsession means: the subsession size is the smallest whose coefficient is
+ * in [-L, L]. It is used for the readings, the unit readings, and the WPS
+ * analysis; the change-point test uses 0.1 whatever it is.
+ * @param[in] wl pointer to the workload struct
+ * @param ac the limit, in (0, 1] (default: 0.1); another value is not set.
+ *        A change has the analysis done again.
+ * @return previous limit, or NaN if ac was not in (0, 1] and was not set
+ */
 DLL_PUBLIC double pilot_set_autocorrelation_coefficient(pilot_workload_t *wl, double ac) NOEXCEPT;
 
 /**

@@ -1318,6 +1318,9 @@ vector<double> subsession_means(const double *first, size_t n, size_t q) {
  * @return the subsession size, or 0 if there is none
  */
 size_t changepoint_subsession_size(const double *first, size_t n) {
+    // Fixed, whatever the session's limit: the error rates of the test that
+    // the documentation of the warm-up and cool-down detection gives were
+    // measured with it.
     const double limit = 0.1;
     const size_t max_q = 256;
     bool all_same = true;
@@ -2321,14 +2324,26 @@ size_t pilot_set_session_duration_limit(pilot_workload_t *wl, size_t sec) noexce
 double pilot_set_confidence_level(pilot_workload_t *wl, double confidence_level) noexcept {
     ASSERT_VALID_POINTER(wl);
     double old = wl->confidence_level_;
+    if (!(confidence_level > 0 && confidence_level < 1)) {  // also rejects NaN
+        error_log << "the confidence level must be in (0, 1); " << confidence_level << " is not, and is not set";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     wl->confidence_level_ = confidence_level;
+    // the analysis depends on it, so it is done again
+    wl->analytical_result_update_time_ = chrono::steady_clock::time_point::min();
     return old;
 }
 
 double pilot_set_autocorrelation_coefficient(pilot_workload_t *wl, double ac) noexcept {
     ASSERT_VALID_POINTER(wl);
     double old_ac = wl->autocorrelation_coefficient_limit_;
+    if (!(ac > 0 && ac <= 1)) {  // also rejects NaN
+        error_log << "the limit of the autocorrelation coefficient must be in (0, 1]; " << ac << " is not, and is not set";
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     wl->autocorrelation_coefficient_limit_ = ac;
+    // the analysis depends on it, so it is done again
+    wl->analytical_result_update_time_ = chrono::steady_clock::time_point::min();
     return old_ac;
 }
 

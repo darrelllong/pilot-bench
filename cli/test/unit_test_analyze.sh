@@ -120,3 +120,9 @@ check_file
 ./bench analyze unit_test_analyze_input_3col_with_header.csv -f 1 -i 1 >$TMPFILE
 grep -q '<warning> Ignoring first line in input. It might be a header. Use `-i 1` to treat the first line as header explicitly. Line data: "ID,Data,Some other data"' $TMPFILE && false
 check_file
+
+# --ac and --cl that are not numbers are rejected
+./bench analyze --ac nan unit_test_analyze_input.csv &>$TMPFILE || :
+grep -q "the argument ('nan') for option '--ac' is invalid" "$TMPFILE"
+./bench analyze --cl nan unit_test_analyze_input.csv &>$TMPFILE || :
+grep -q "the argument ('nan') for option '--cl' is invalid" "$TMPFILE"

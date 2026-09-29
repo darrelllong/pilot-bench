@@ -210,7 +210,7 @@ int handle_analyze(int argc, const char** argv) {
         // read individual values that may override our preset
         if (vm.count("ac")) {
             ac = vm["ac"].as<double>();
-            if (ac <= 0 || ac > 1) {
+            if (!(ac > 0 && ac <= 1)) {  // also rejects NaN
                 fprintf(stderr, "the argument ('%f') for option '--ac' is invalid\n", ac);
                 fprintf(stderr, "Valid range for the autocorrelation coefficient arg is (0,1], exiting...\n");
                 return 2;
@@ -223,6 +223,11 @@ int handle_analyze(int argc, const char** argv) {
     // read individual values that may override our preset
     if (vm.count("cl")) {
         confidence_level = vm["cl"].as<double>();
+        if (!(confidence_level > 0 && confidence_level < 1)) {  // also rejects NaN
+            fprintf(stderr, "the argument ('%f') for option '--cl' is invalid\n", confidence_level);
+            fprintf(stderr, "Valid range for the confidence level is (0, 1), e.g. 0.90 or 0.95, exiting...\n");
+            return 2;
+        }
     }
     info_log << "Setting the confidence level to " << confidence_level;
 

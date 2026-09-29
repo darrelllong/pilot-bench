@@ -56,3 +56,16 @@ rc=0
 [ "$rc" -eq 12 ]
 grep -q "\[PI 0\] Reading optimal subsession size: 1" "$TMPFILE"
 grep -q "^0,40,0,0,51.4359,51.4359,4.58736,4.58736," "${RESULT_DIR}/zero/pi_results.csv"
+
+# 1 3 1 3 1 3 1 3: at 8 readings no subsession size from 1 to 2 has an
+# autocorrelation within 0.8 (-0.875 for 1; for 2 every subsession mean is 2,
+# which Pilot takes as 1), so the session ends when the readings do, with no
+# variance and no CI: they are NaN, not those of the analysis at 7 readings,
+# which found a subsession size of 2.
+rm -f "$PILOT_MOCK_SEQUENCE_ROUND_FILE"
+export PILOT_MOCK_SEQUENCE="1 3 1 3 1 3 1 3"
+rc=0
+./bench run_program -o ${RESULT_DIR}/alt --pi "value,,0,0,1" \
+    -- ./mock_benchmark_sequence.sh >"$TMPFILE" 2>&1 || rc=$?
+[ "$rc" -eq 12 ]
+grep -q "^0,8,2,2,nan,nan,nan,nan," "${RESULT_DIR}/alt/pi_results.csv"

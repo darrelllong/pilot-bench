@@ -703,7 +703,7 @@ int handle_run_program(int argc, const char** argv) {
 
         if (vm.count("ac")) {
             ac = vm["ac"].as<double>();
-            if (ac <= 0 || ac > 1) {
+            if (!(ac > 0 && ac <= 1)) {  // also rejects NaN
                 fatal_log << "Valid range for the autocorrelation coefficient arg is (0,1], exiting...";
                 return 2;
             }
@@ -713,7 +713,7 @@ int handle_run_program(int argc, const char** argv) {
 
         if (vm.count("confidence-level")) {
             double cl = vm["confidence-level"].as<double>();
-            if (cl <= 0 || cl >= 1) {
+            if (!(cl > 0 && cl < 1)) {  // also rejects NaN
                 fatal_log << "Valid range for --confidence-level is (0, 1), e.g. 0.90 or 0.95";
                 return 2;
             }

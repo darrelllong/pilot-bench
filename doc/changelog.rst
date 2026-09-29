@@ -164,6 +164,37 @@ Ratios
 * **The CI of the unit readings is at the session's confidence level.** It
   was at 95%.
 
+The Autocorrelation Limit
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* **The limit of** ``--ac`` **and of the presets is used for the readings.**
+  The subsession size of the readings and of the unit readings, and so the
+  number of readings a session needs, was always found with a limit of 0.1,
+  whatever ``--ac`` or the preset set; the limit was logged, and was used
+  only in the WPS analysis. For the readings, ``quick`` (0.8) and
+  ``normal`` (0.2) therefore used the limit of ``strict`` (0.1), and
+  ``--ac`` did not change the readings' limit under any preset.
+
+  *On upgrading:* a session under ``quick`` or ``normal`` may now end with
+  fewer readings or with more. On the same readings a wider limit never
+  finds a larger subsession size, but the session can end at another
+  number of readings, where it can. With negatively autocorrelated
+  readings a wider limit can accept a subsession size of 1 where 0.1
+  needed 2, and the alternation then makes the variance larger, so the
+  session needs more readings. Results obtained before met the stricter
+  limit of 0.1, and still do. To have 0.1, use ``--preset strict`` or
+  ``--ac 0.1``. The change-point test uses 0.1 whatever the limit, as
+  before.
+* **A limit or confidence level that is not a number is rejected.**
+  ``--ac nan`` passed the check of its range, and with this change would
+  have kept a session from ever finding a subsession size;
+  ``--confidence-level nan`` ended the program. ``bench analyze`` did not
+  check ``--cl`` at all. ``pilot_set_autocorrelation_coefficient()`` and
+  ``pilot_set_confidence_level()`` did not check their argument, and a
+  change made during a session took effect only with the next reading;
+  they now reject a value out of range, returning NaN, and have the
+  analysis done again.
+
 Reported Results
 ~~~~~~~~~~~~~~~~
 

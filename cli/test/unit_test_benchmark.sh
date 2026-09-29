@@ -53,12 +53,17 @@ RESULT_DIR=`mktemp -d`
 trap 'rm -rf "$RESULT_DIR"' EXIT
 
 TMPFILE=`mktemp`
+# Under the default preset, quick, the autocorrelation limit is 0.8. The
+# first 10 readings have a lag-1 autocorrelation of 0.25, so the subsession
+# size is 1, and they need 6 readings for a CI of 30% of the mean, fewer
+# than the least sample size, so the session ends at 10: mean 1.779,
+# variance 0.0750989, CI 2 t(0.975, 9) s / sqrt(10) = 0.392075.
 check() {
-    grep -q "response time: R m1.725 c0.2839 v0.04466" "$TMPFILE"
-    grep -q "\[PI 0\] Reading mean: 1.725 ms" "$TMPFILE"
-    grep -q "\[PI 0\] Reading CI: 0.2839 ms" "$TMPFILE"
-    grep -q "\[PI 0\] Reading variance: 0.04466 ms" "$TMPFILE"
-    grep -q "\[PI 0\] Reading optimal subsession size: 4" "$TMPFILE"
+    grep -q "response time: R m1.779 c0.3921 v0.0751" "$TMPFILE"
+    grep -q "\[PI 0\] Reading mean: 1.779 ms" "$TMPFILE"
+    grep -q "\[PI 0\] Reading CI: 0.3921 ms" "$TMPFILE"
+    grep -q "\[PI 0\] Reading variance: 0.0751 ms" "$TMPFILE"
+    grep -q "\[PI 0\] Reading optimal subsession size: 1" "$TMPFILE"
 
     # test quiet mode
     rm -f /tmp/pilot_mock_benchmark_round.txt
@@ -68,13 +73,13 @@ check() {
         -- ./mock_benchmark.sh >"$TMPFILE" 2>&1
     # we don't directly compare the output with an expected file, because the
     # session_duration on the first line will always be different
-    grep -q "0,1.72477,0.283944,0.0446593,0,1.72477,0.283944,0.0446593," "$TMPFILE"
-    grep -q "1,2.72477,0.283944,0.0446593,0,2.72477,0.283944,0.0446593"  "$TMPFILE"
+    grep -q "0,1.779,0.392075,0.0750989,0,1.779,0.392075,0.0750989," "$TMPFILE"
+    grep -q "1,2.779,0.392075,0.0750989,0,2.779,0.392075,0.0750989"  "$TMPFILE"
     # even we are running in quiet mode log should still contain <debug> information
     grep -q '<debug>' "${OUTPUT_DIR}/session_log.txt"
     # check correctness of saved results
-    grep -q "0,44,1.72477,1.72477,0.0446593,0.0446593,0.283944,0.283944,0" "${OUTPUT_DIR}/pi_results.csv"
-    grep -q "1,44,2.72477,2.72477,0.0446593,0.0446593,0.283944,0.283944,0" "${OUTPUT_DIR}/pi_results.csv"
+    grep -q "0,10,1.779,1.779,0.0750989,0.0750989,0.392075,0.392075,0" "${OUTPUT_DIR}/pi_results.csv"
+    grep -q "1,10,2.779,2.779,0.0750989,0.0750989,0.392075,0.392075,0" "${OUTPUT_DIR}/pi_results.csv"
 
     # TODO: add more checks here
 }
@@ -89,3 +94,22 @@ rm -f /tmp/pilot_mock_benchmark_round.txt
 ./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" --valid-rc 0 --valid-rc 1\
     -- ./mock_benchmark.sh -r >"$TMPFILE" 2>&1
 check
+
+# --ac sets the autocorrelation limit, here 0.1. Subsession sizes 1 to 3 of
+# the first 44 readings have autocorrelations of 0.61, 0.56 and 0.47, and 4
+# has 0.082, so the subsession size is 4 and the session needs 44 readings:
+# mean 1.72477, subsession variance 0.0446593, CI 0.283944.
+rm -f /tmp/pilot_mock_benchmark_round.txt
+./bench run_program -o ${RESULT_DIR}/ac --ci-perc 0.3 --min-sample-size 10 --ac 0.1 --pi "response time,ms,0,0,1" \
+    -- ./mock_benchmark.sh >"$TMPFILE" 2>&1
+grep -q "Rounds: 44" "$TMPFILE"
+grep -q "\[PI 0\] Reading optimal subsession size: 4" "$TMPFILE"
+grep -q "0,44,1.72477,1.72477,0.0446593,0.0446593,0.283944,0.283944,0" "${RESULT_DIR}/ac/pi_results.csv"
+
+# A limit or a confidence level that is not a number is rejected
+rc=0
+./bench run_program --ac nan --pi "response time,ms,0,0,1" -- ./mock_benchmark.sh >"$TMPFILE" 2>&1 || rc=$?
+[ "$rc" -eq 2 ]
+rc=0
+./bench run_program --confidence-level nan --pi "response time,ms,0,0,1" -- ./mock_benchmark.sh >"$TMPFILE" 2>&1 || rc=$?
+[ "$rc" -eq 2 ]

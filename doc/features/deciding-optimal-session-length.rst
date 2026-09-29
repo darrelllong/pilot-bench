@@ -34,8 +34,8 @@ Pilot processes the unit readings as follows:
    unit reading sequence to find and discard warm-up and cool-down phases
    (see :doc:`warm-up-and-cool-down-phase-detection`).
 2. **Autocorrelation reduction**: apply subsession analysis to the remaining
-   samples until they are approximately i.i.d.
-   (see :doc:`autocorrelation-detection-and-mitigation`).
+   samples until their lag-1 autocorrelation is within the limit (see
+   :doc:`autocorrelation-detection-and-mitigation`).
 3. **CI calculation**: compute the CI of the sample mean using the
    *t*-distribution. If the CI width has not yet reached the target, run
    another round.

@@ -23,7 +23,10 @@ need three values per workload: the **mean**, the **subsession sample
 size**, and the **subsession variance**. We use subsession quantities (see
 :doc:`autocorrelation-detection-and-mitigation`) because i.i.d. samples are
 a hard requirement for all the analyses in this section. Throughout this
-section, all samples are subsession samples with negligible autocorrelation.
+section, all samples are subsession samples whose lag-1 autocorrelation is
+within the session's limit. The analyses assume that they are independent,
+which is nearest to true under the limit of ``strict``, 0.1; under the wider
+limits of ``quick`` and ``normal`` the comparisons are less reliable.
 
 Comparing Two Results
 ---------------------

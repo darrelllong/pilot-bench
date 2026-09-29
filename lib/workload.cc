@@ -245,7 +245,7 @@ static ssize_t _calc_required_num_of_readings(const pilot_workload_t *wl,
 
     size_t opt_sample_size;
     if (!pilot_optimal_sample_size(data, n, ci_width, mean_method, q, &opt_sample_size, ci_type,
-                                   wl->confidence_level_)) {
+                                   wl->confidence_level_, wl->autocorrelation_coefficient_limit_)) {
         debug_log << "Don't have enough data to calculate required readings sample size yet";
         return -1;
     } else {

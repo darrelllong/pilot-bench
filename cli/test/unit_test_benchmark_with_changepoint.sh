@@ -55,9 +55,15 @@ trap 'rm -rf "$RESULT_DIR" "$TMPFILE"' EXIT
 
 # The mock benchmark has a warm-up of 40 rounds and then the data of
 # mock_benchmark.sh. Pilot has to find the changepoint and leave the warm-up
-# out, so the results are those of unit_test_benchmark.sh.
+# out, so the results are those of the --ac 0.1 run of
+# unit_test_benchmark.sh.
 rm -f /tmp/pilot_mock_benchmark_cp_round.txt
-./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --pi "response time,ms,0,0,1" \
+# The session has to run past the warm-up to find the change. With the
+# autocorrelation limit of the default preset, 0.8, or of normal, 0.2, the
+# readings of the warm-up alone are enough and the session ends within it,
+# at 10 or at 40 rounds; with 0.1 the subsession size is 4 and it runs to
+# 84 rounds.
+./bench run_program -o ${RESULT_DIR}/r --ci-perc 0.3 --min-sample-size 10 --ac 0.1 --pi "response time,ms,0,0,1" \
     -- ./mock_benchmark_with_changepoint.sh >"$TMPFILE" 2>&1
 rm -f /tmp/pilot_mock_benchmark_cp_round.txt
 

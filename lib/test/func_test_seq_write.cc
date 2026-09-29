@@ -396,8 +396,8 @@ int main(int argc, char **argv) {
     }
     if (vm.count("autocorr-threshold")) {
         double at = vm["autocorr-threshold"].as<double>();
-        if (at > 1 || at < -1) {
-            cerr << "autocorrelation coefficient threshold must be within [-1, 1]" << endl;
+        if (!(at > 0 && at <= 1)) {  // also rejects NaN
+            cerr << "autocorrelation coefficient threshold must be within (0, 1]" << endl;
             return 2;
         }
         pilot_set_autocorrelation_coefficient(g_wl.get(), at);

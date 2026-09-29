@@ -56,9 +56,15 @@ The autocorrelation coefficient :math:`R(\tau)` lies in :math:`[-1, 1]`:
 * :math:`R(\tau) = 0` means no correlation at lag :math:`\tau`.
 
 In practice, Pilot checks :math:`R(1)`, the lag-1 autocorrelation, which
-captures correlation between adjacent samples. The range :math:`[-0.1, 0.1]`
-is considered negligible autocorrelation and safe for CI
-calculations [ferrari:78]_.
+captures correlation between adjacent samples, against a limit :math:`L`:
+:math:`R(1)` has to be in :math:`[-L, L]`. :math:`L` is set by ``--ac`` or
+by the preset: 0.8 for ``quick``, 0.2 for ``normal``, and 0.1 for
+``strict``. The range :math:`[-0.1, 0.1]` is the one that Ferrari considers
+negligible autocorrelation and safe for CI calculations [ferrari:78]_; a
+wider range gives a CI that can be too narrow (see the warning on the
+``quick`` preset in :doc:`../reference`). The change-point test always uses
+0.1 for its own subsession size (see
+:doc:`warm-up-and-cool-down-phase-detection`).
 
 Subsession Analysis
 -------------------
@@ -85,14 +91,15 @@ Pilot applies subsession analysis as follows:
 
 1. After collecting raw measurements and removing non-stable phases
    (warm-up/cool-down), compute :math:`R(1)` of the remaining samples.
-2. If :math:`R(1)` is already in :math:`[-0.1, 0.1]`, the samples are
-   sufficiently independent and no merging is needed (:math:`n = 1`).
+2. If :math:`R(1)` is already in :math:`[-L, L]`, no merging is needed
+   (:math:`n = 1`).
 3. Otherwise, increase :math:`n` and recompute :math:`R(1)` of the
    subsession samples. Repeat until the autocorrelation falls within the
    valid range.
 
-The result is a set of subsession samples that are approximately i.i.d. and
-can be used reliably for CI calculation.
+The result is a set of subsession samples whose lag-1 autocorrelation is
+within the limit: approximately i.i.d. when the limit is 0.1, and less so
+under a wider one.
 
 .. [ferrari:78] Domenico Ferrari. *Computer Systems Performance
                 Evaluation*. Prentice-Hall, 1978.
